@@ -116,3 +116,42 @@ test('validateSession', () => {
 test('parseCsv tolerates a UTF-8 BOM from Excel', () => {
   assert.deepEqual(L.parseCsv('﻿' + L.CSV_HEADER + '\n' + ROW + '\n'), { sessions: [SESSION], skipped: 0 });
 });
+
+// ---- Task 3: dashboard calculations ----
+const S = (start, task, activeMin, plannedMin) => ({ start, finish: start, task, activeMin, plannedMin,
+  completionPct: Math.round(activeMin/plannedMin*100) });
+const WEEK = [
+  S('2026-11-09 09:00', 'Job search', 60, 45),   // Mon
+  S('2026-11-09 11:00', 'Network', 30, 45),      // Mon
+  S('2026-11-11 10:00', 'Network', 45, 45),      // Wed
+  S('2026-11-14 10:00', 'AI projects', 45, 60),  // Sat
+];
+test('summarize', () => {
+  assert.deepEqual(L.summarize(WEEK), { totalMin: 180, completionPct: 92, avgPerDayMin: 60,
+    avgPerWeekdayMin: 68, byTask: { 'Job search': 60, 'Network': 75, 'AI projects': 45, 'Interview prep (theory)': 0 } });
+  assert.deepEqual(L.summarize([]), { totalMin: 0, completionPct: null, avgPerDayMin: null,
+    avgPerWeekdayMin: null, byTask: { 'Job search': 0, 'Network': 0, 'AI projects': 0, 'Interview prep (theory)': 0 } });
+});
+test('dailyByTask zero-fills every day', () => {
+  const r = L.dailyByTask(WEEK, '2026-11-09', '2026-11-15');
+  assert.equal(r.days.length, 7);
+  assert.deepEqual(r.series['Network'], [30, 0, 45, 0, 0, 0, 0]);
+  assert.deepEqual(r.series['AI projects'], [0, 0, 0, 0, 0, 45, 0]);
+});
+test('session crossing midnight counts on start day', () => {
+  const s = { ...S('2026-11-11 23:30', 'Network', 60, 45), finish: '2026-11-12 00:30' };
+  assert.equal(L.filterByRange([s], '2026-11-12', '2026-11-12').length, 0);
+  assert.deepEqual(L.dailyByTask([s], '2026-11-11', '2026-11-12').series['Network'], [60, 0]);
+});
+test('weekRange Mon-Sun', () => {
+  const want = { from: '2026-11-09', to: '2026-11-15' };
+  assert.deepEqual(L.weekRange(new Date(2026, 10, 9)), want);   // Mon
+  assert.deepEqual(L.weekRange(new Date(2026, 10, 11)), want);  // Wed
+  assert.deepEqual(L.weekRange(new Date(2026, 10, 15)), want);  // Sun
+});
+test('shiftRange and canGoForward', () => {
+  assert.deepEqual(L.shiftRange({ from: '2026-11-09', to: '2026-11-15' }, -7), { from: '2026-11-02', to: '2026-11-08' });
+  assert.equal(L.canGoForward('2026-11-15', '2026-11-11'), false);
+  assert.equal(L.canGoForward('2026-11-11', '2026-11-11'), false);
+  assert.equal(L.canGoForward('2026-11-08', '2026-11-11'), true);
+});

@@ -163,10 +163,77 @@
     return { sessions, skipped };
   }
 
+  // ---- Dashboard calculations ----
+  const sessionDay = (s) => s.start.slice(0, 10);
+
+  function filterByRange(sessions, fromKey, toKey) {
+    return sessions.filter((s) => {
+      const day = sessionDay(s);
+      return day >= fromKey && day <= toKey;
+    });
+  }
+
+  function emptyByTask() {
+    const byTask = {};
+    for (const t of TASKS) byTask[t] = 0;
+    return byTask;
+  }
+
+  function summarize(sessions) {
+    const byTask = emptyByTask();
+    const days = new Set();
+    const weekdayMin = new Map();
+    let totalMin = 0, plannedMin = 0;
+    for (const s of sessions) {
+      totalMin += s.activeMin;
+      plannedMin += s.plannedMin;
+      byTask[s.task] += s.activeMin;
+      const day = sessionDay(s);
+      days.add(day);
+      if (isWeekday(day)) weekdayMin.set(day, (weekdayMin.get(day) || 0) + s.activeMin);
+    }
+    let weekdayTotal = 0;
+    for (const v of weekdayMin.values()) weekdayTotal += v;
+    return {
+      totalMin,
+      completionPct: plannedMin > 0 ? Math.round(totalMin / plannedMin * 100) : null,
+      avgPerDayMin: days.size > 0 ? Math.round(totalMin / days.size) : null,
+      avgPerWeekdayMin: weekdayMin.size > 0 ? Math.round(weekdayTotal / weekdayMin.size) : null,
+      byTask,
+    };
+  }
+
+  function dailyByTask(sessions, fromKey, toKey) {
+    const days = [];
+    for (let k = fromKey; k <= toKey; k = addDays(k, 1)) days.push(k);
+    const index = new Map(days.map((k, i) => [k, i]));
+    const series = {};
+    for (const t of TASKS) series[t] = days.map(() => 0);
+    for (const s of sessions) {
+      const i = index.get(sessionDay(s));
+      if (i !== undefined) series[s.task][i] += s.activeMin;
+    }
+    return { days, series };
+  }
+
+  function weekRange(d) {
+    const key = dateKey(d);
+    const dow = new Date(keyToUtc(key)).getUTCDay(); // 0 = Sunday
+    const from = addDays(key, -((dow + 6) % 7));
+    return { from, to: addDays(from, 6) };
+  }
+
+  function shiftRange(range, days) {
+    return { from: addDays(range.from, days), to: addDays(range.to, days) };
+  }
+
+  const canGoForward = (toKey, todayKey) => toKey < todayKey;
+
   return {
     TASKS, TASK_COLORS, formatHM, formatDuration, formatStamp, dateKey, addDays, isWeekday,
     createTimer, startTimer, pauseTimer, resumeTimer, activeMs, stopTimer,
     colorBand, ringFraction, setPlanned, adjustPlanned,
     CSV_HEADER, sessionToCsvRow, parseCsv, validateSession,
+    sessionDay, filterByRange, summarize, dailyByTask, weekRange, shiftRange, canGoForward,
   };
 });
