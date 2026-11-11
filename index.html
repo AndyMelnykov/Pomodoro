@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pomodoro</title>
+<style>
+  :root {
+    --bg: #f3f3f3;
+    --card: #ffffff;
+    --line: #dcdcdc;
+    --text: #1f1f1f;
+    --muted: #6b6b6b;
+    --primary: #005fb8;
+    --primary-hover: #004c94;
+    /* timer colours, swapped by JS through data-band on #timer */
+    --t-text: #5f5f5f;
+    --t-track: #e6e6e6;
+    --t-arc: #e6e6e6;
+  }
+  #timer[data-band="red"]    { --t-text: #c62828; --t-track: #f9dcdc; --t-arc: #e89a9a; }
+  #timer[data-band="orange"] { --t-text: #e07000; --t-track: #fde6cc; --t-arc: #f3b46b; }
+  #timer[data-band="green"]  { --t-text: #1b6e3a; --t-track: #d6eedd; --t-arc: #86c49b; }
+  #timer[data-band="violet"] { --t-text: #6a3fb5; --t-track: #e7defa; --t-arc: #b39ae0; }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: "Segoe UI Variable", "Segoe UI", sans-serif;
+  }
+  main { max-width: 960px; margin: 0 auto; padding: 16px; }
+
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 24px; }
+  .tab {
+    border: 0; background: none; font: inherit; font-size: 15px; color: var(--muted);
+    padding: 10px 18px; cursor: pointer; border-bottom: 3px solid transparent; margin-bottom: -1px;
+  }
+  .tab:hover { color: var(--text); }
+  .tab[aria-selected="true"] { color: var(--primary); border-bottom-color: var(--primary); font-weight: 600; }
+  .tab:focus-visible, button:focus-visible, input:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+
+  [hidden] { display: none !important; }
+
+  /* ---- timer tab ---- */
+  #timer { display: flex; flex-direction: column; align-items: center; gap: 28px; }
+  .tasks { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+  .task {
+    font: inherit; font-size: 14px; padding: 8px 16px; border-radius: 999px; cursor: pointer;
+    border: 1px solid var(--line); background: var(--card); color: var(--text);
+  }
+  .task:hover:not(:disabled) { border-color: var(--primary); }
+  .task[aria-pressed="true"] { background: var(--primary); border-color: var(--primary); color: #fff; }
+  .task:disabled { cursor: default; opacity: .5; }
+  .task[aria-pressed="true"]:disabled { opacity: 1; }
+
+  .ring { position: relative; width: min(80vw, 320px); aspect-ratio: 1; }
+  .ring svg { width: 100%; height: 100%; display: block; }
+  .ring circle { fill: none; stroke-width: 14; }
+  #ring-track { stroke: var(--t-track); transition: stroke .3s; }
+  #ring-arc { stroke: var(--t-arc); stroke-linecap: round; transition: stroke .3s; }
+  .ring-text {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 6px; color: var(--t-text); transition: color .3s;
+  }
+  .clock {
+    display: flex; align-items: baseline; gap: .3em; white-space: nowrap;
+    font-size: clamp(24px, 8vw, 36px); font-variant-numeric: tabular-nums;
+  }
+  .planned { display: inline-flex; align-items: baseline; }
+  .planned input {
+    width: 1.7em; padding: 0; margin: 0; border: 0; border-bottom: 2px solid transparent; border-radius: 0;
+    background: transparent; font: inherit; color: inherit; text-align: center; font-variant-numeric: tabular-nums;
+  }
+  .planned input:not(:disabled) { border-bottom-color: currentColor; cursor: text; }
+  .planned input:disabled { opacity: 1; -webkit-text-fill-color: currentColor; }
+  .paused-label { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; min-height: 1.2em; }
+
+  .controls { display: flex; gap: 20px; align-items: center; }
+  .round {
+    width: 64px; height: 64px; border-radius: 50%; border: 0; cursor: pointer;
+    font: inherit; font-size: 18px; display: grid; place-items: center;
+  }
+  .round.primary { background: var(--primary); color: #fff; width: 88px; height: 88px; font-size: 16px; }
+  .round.primary:hover:not(:disabled) { background: var(--primary-hover); }
+  .round.secondary { background: var(--card); color: var(--text); border: 1px solid var(--line); }
+  .round.secondary:hover:not(:disabled) { border-color: var(--text); }
+  .round:disabled { opacity: .4; cursor: not-allowed; }
+
+  .hint { color: var(--muted); font-size: 13px; min-height: 1.2em; margin: -12px 0 0; }
+
+  .error-panel {
+    width: min(100%, 520px); background: #fdecea; border: 1px solid #e89a9a; color: #7a1c1c;
+    border-radius: 8px; padding: 14px 16px;
+  }
+  .error-panel strong { display: block; margin-bottom: 4px; }
+  .error-panel p { margin: 0 0 10px; font-size: 14px; word-break: break-word; }
+  .error-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .error-actions button {
+    font: inherit; font-size: 14px; padding: 6px 14px; border-radius: 6px; cursor: pointer;
+    border: 1px solid #c62828; background: #fff; color: #7a1c1c;
+  }
+  .error-actions button:hover { background: #fbe0dd; }
+  .copied { font-size: 13px; }
+
+  .placeholder { color: var(--muted); text-align: center; padding: 48px 0; }
+</style>
+</head>
+<body>
+<main>
+  <nav class="tabs" role="tablist" aria-label="Views">
+    <button class="tab" role="tab" id="tab-timer" aria-controls="timer" aria-selected="true">Timer</button>
+    <button class="tab" role="tab" id="tab-dashboard" aria-controls="dashboard" aria-selected="false">Dashboard</button>
+  </nav>
+
+  <section id="timer" role="tabpanel" aria-labelledby="tab-timer" data-band="idle">
+    <div class="tasks" id="tasks" role="group" aria-label="Task"></div>
+
+    <div class="ring">
+      <svg viewBox="0 0 200 200" aria-hidden="true">
+        <!-- rotated so the arc starts at 12 o'clock -->
+        <g transform="rotate(-90 100 100)">
+          <circle id="ring-track" cx="100" cy="100" r="90"></circle>
+          <circle id="ring-arc" cx="100" cy="100" r="90"></circle>
+        </g>
+      </svg>
+      <div class="ring-text">
+        <div class="clock">
+          <span id="elapsed" aria-label="Elapsed time">00:00</span>
+          <span>/</span>
+          <span class="planned">
+            <input id="plan-h" inputmode="numeric" maxlength="2" aria-label="Planned hours" autocomplete="off">
+            <span>:</span>
+            <input id="plan-m" inputmode="numeric" maxlength="2" aria-label="Planned minutes" autocomplete="off">
+          </span>
+        </div>
+        <div class="paused-label" id="paused-label" aria-live="polite"></div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button class="round primary" id="btn-main" type="button"></button>
+      <button class="round secondary" id="btn-stop" type="button" aria-label="Stop and save">&#9632;</button>
+    </div>
+    <p class="hint" id="hint"></p>
+
+    <div class="error-panel" id="error-panel" role="alert" hidden>
+      <strong>Session not saved</strong>
+      <p id="error-text"></p>
+      <div class="error-actions">
+        <button type="button" id="btn-retry">Retry save</button>
+        <button type="button" id="btn-copy">Copy session</button>
+        <span class="copied" id="copied" hidden>Copied &mdash; paste it as a new line in sessions.csv</span>
+      </div>
+    </div>
+  </section>
+
+  <section id="dashboard" role="tabpanel" aria-labelledby="tab-dashboard" hidden>
+    <p class="placeholder">The dashboard is coming next.</p>
+  </section>
+</main>
+
+<script src="logic.js"></script>
+<script src="chart.umd.js"></script>
+<script>
+(function () {
+  'use strict';
+  const L = window.Logic;
+  const $ = (id) => document.getElementById(id);
+
+  // ---- clock (dev-only ?speed=N makes time run N x faster from page load) ----
+  const speed = Number(new URLSearchParams(location.search).get('speed')) || 1;
+  const t0 = Date.now();
+  const now = () => (speed === 1 ? Date.now() : t0 + (Date.now() - t0) * speed);
+
+  // ---- state ----
+  let state = L.createTimer(45);
+  let selectedTask = null;
+  let pendingSession = null;
+
+  // ---- tabs (switching never touches the timer state) ----
+  function showTab(name) {
+    for (const id of ['timer', 'dashboard']) {
+      $(id).hidden = id !== name;
+      $('tab-' + id).setAttribute('aria-selected', String(id === name));
+    }
+  }
+  $('tab-timer').addEventListener('click', () => showTab('timer'));
+  $('tab-dashboard').addEventListener('click', () => showTab('dashboard'));
+
+  // ---- task toggles ----
+  const taskButtons = L.TASKS.map((task) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'task';
+    b.textContent = task;
+    b.setAttribute('aria-pressed', 'false');
+    b.addEventListener('click', () => {
+      if (state.status !== 'idle') return;
+      selectedTask = selectedTask === task ? null : task;
+      render();
+    });
+    $('tasks').appendChild(b);
+    return b;
+  });
+
+  // ---- planned length inputs ----
+  const planH = $('plan-h');
+  const planM = $('plan-m');
+  const two = (n) => String(n).padStart(2, '0');
+
+  function commitPlanned() {
+    if (state.status !== 'idle') return;
+    state = { ...state, plannedMin: L.setPlanned(planH.value, planM.value) };
+    render(true);
+  }
+  for (const input of [planH, planM]) {
+    const field = input === planH ? 'h' : 'm';
+    input.addEventListener('focus', () => input.select());
+    input.addEventListener('blur', commitPlanned);
+    input.addEventListener('keydown', (e) => {
+      if (state.status !== 'idle') return;
+      if (e.key === 'Enter') {
+        commitPlanned();
+        input.blur();
+      } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        state = { ...state, plannedMin: L.adjustPlanned(state.plannedMin, field, e.key === 'ArrowUp' ? 1 : -1) };
+        render(true);
+        input.select();
+      }
+    });
+  }
+
+  // ---- buttons ----
+  $('btn-main').addEventListener('click', () => {
+    const t = now();
+    if (state.status === 'idle') {
+      if (!selectedTask) return;
+      if (document.activeElement === planH || document.activeElement === planM) commitPlanned();
+      state = L.startTimer(state, selectedTask, t);
+    } else if (state.status === 'running') {
+      state = L.pauseTimer(state, t);
+    } else {
+      state = L.resumeTimer(state, t);
+    }
+    render();
+  });
+
+  $('btn-stop').addEventListener('click', () => {
+    if (state.status === 'idle') return;
+    const result = L.stopTimer(state, now());
+    state = result.state;
+    selectedTask = null;
+    render(true);
+    if (result.session) saveSession(result.session);
+  });
+
+  // ---- saving ----
+  async function saveSession(session) {
+    pendingSession = session;
+    $('copied').hidden = true;
+    try {
+      const res = await fetch('/api/sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(session),
+      });
+      if (res.status === 201) {
+        pendingSession = null;
+        $('error-panel').hidden = true;
+        return;
+      }
+      let message = 'The server answered with status ' + res.status + '.';
+      try { message = (await res.json()).error || message; } catch (_) { /* keep default */ }
+      showError(message);
+    } catch (_) {
+      showError('Could not reach the local server. Is it still running?');
+    }
+  }
+
+  function showError(message) {
+    $('error-text').textContent = message;
+    $('error-panel').hidden = false;
+  }
+
+  $('btn-retry').addEventListener('click', () => { if (pendingSession) saveSession(pendingSession); });
+  $('btn-copy').addEventListener('click', async () => {
+    if (!pendingSession) return;
+    const row = L.sessionToCsvRow(pendingSession);
+    try {
+      await navigator.clipboard.writeText(row);
+      $('copied').textContent = 'Copied — paste it as a new line in sessions.csv';
+    } catch (_) {
+      $('copied').textContent = 'Copy failed. Select this row manually: ' + row;
+    }
+    $('copied').hidden = false;
+  });
+
+  // ---- render ----
+  const R = 90;
+  const CIRC = 2 * Math.PI * R;
+  const arc = $('ring-arc');
+  arc.setAttribute('stroke-dasharray', '0 ' + CIRC);
+  $('ring-track').setAttribute('stroke-dasharray', 'none');
+
+  function render(forceInputs) {
+    const idle = state.status === 'idle';
+    const ms = L.activeMs(state, now());
+
+    $('elapsed').textContent = L.formatHM(Math.floor(ms / 60000));
+    $('timer').dataset.band = idle ? 'idle' : L.colorBand(ms, state.plannedMin);
+
+    const frac = idle ? 0 : L.ringFraction(ms, state.plannedMin);
+    arc.setAttribute('stroke-dasharray', (frac * CIRC) + ' ' + CIRC);
+    arc.style.opacity = frac > 0 ? '1' : '0';
+
+    // never overwrite what the user is typing
+    for (const [input, value] of [[planH, Math.floor(state.plannedMin / 60)], [planM, state.plannedMin % 60]]) {
+      input.disabled = !idle;
+      if (forceInputs || document.activeElement !== input) input.value = two(value);
+    }
+
+    $('paused-label').textContent = state.status === 'paused' ? 'Paused' : '';
+
+    taskButtons.forEach((b, i) => {
+      const task = L.TASKS[i];
+      const active = idle ? selectedTask === task : state.task === task;
+      b.setAttribute('aria-pressed', String(active));
+      b.disabled = !idle;
+    });
+
+    const main = $('btn-main');
+    main.textContent = idle ? '▶ Start' : state.status === 'running' ? '❚❚ Pause' : '▶ Resume';
+    main.disabled = idle && !selectedTask;
+    $('btn-stop').disabled = idle;
+    $('hint').textContent = idle && !selectedTask ? 'Pick a task to start' : '';
+  }
+
+  render(true);
+  setInterval(render, 1000);
+})();
+</script>
+</body>
+</html>
