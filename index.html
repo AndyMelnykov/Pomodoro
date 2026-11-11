@@ -103,6 +103,45 @@
   .copied { font-size: 13px; }
 
   .placeholder { color: var(--muted); text-align: center; padding: 48px 0; }
+
+  /* ---- task editor ---- */
+  .task-row { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px; }
+  .gear {
+    width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--line); background: var(--card);
+    color: var(--muted); font-size: 18px; line-height: 1; cursor: pointer; display: grid; place-items: center;
+  }
+  .gear:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); }
+  .gear:disabled { opacity: .4; cursor: not-allowed; }
+
+  dialog {
+    border: 1px solid #cfcfcf; border-radius: 10px; padding: 18px 20px; color: var(--text); background: var(--card);
+    box-shadow: 0 8px 28px rgba(0,0,0,.25); font: inherit; font-size: 14px;
+  }
+  dialog::backdrop { background: rgba(0,0,0,.3); }
+  dialog h2 { margin: 0 0 4px; font-size: 17px; }
+  .dlg-sub { margin: 0 0 8px; color: var(--muted); }
+  #task-editor { width: min(94vw, 620px); }
+  #task-remove { width: min(94vw, 440px); }
+  .te-hdr, .te-row { display: grid; grid-template-columns: 22px 34px 1fr 1fr 28px; gap: 8px; align-items: center; }
+  .te-hdr { color: var(--muted); font-size: 11px; text-transform: uppercase; margin: 12px 0 4px; }
+  .te-row { padding: 4px 0; border-radius: 6px; }
+  .te-row.dragging { opacity: .4; }
+  .te-row.over { box-shadow: 0 -2px 0 var(--primary); }
+  .te-grip { color: #8a8a8a; font-size: 16px; letter-spacing: -2px; cursor: grab; user-select: none; text-align: center; }
+  .te-row input[type="color"] { width: 30px; height: 30px; padding: 0; border: 0; background: none; cursor: pointer; }
+  .te-row input[type="text"] { font: inherit; padding: 6px 8px; border: 1px solid #cfcfcf; border-radius: 6px; min-width: 0; width: 100%; }
+  .te-row input[readonly] { background: #f1f1f1; color: #777; }
+  .te-remove { border: 0; background: none; color: #b33; font-size: 18px; cursor: pointer; }
+  .link { border: 0; background: none; color: var(--primary); font: inherit; cursor: pointer; padding: 6px 0; margin: 6px 0 10px; }
+  .dlg-error { color: #7a1c1c; background: #fdecea; border-radius: 6px; padding: 8px 10px; margin: 0 0 10px; }
+  .dlg-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+  .dlg-actions button { font: inherit; padding: 7px 16px; border-radius: 6px; border: 1px solid #cfcfcf; background: var(--card); cursor: pointer; }
+  .dlg-actions .primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+  .dlg-actions .danger { background: #c62828; border-color: #c62828; color: #fff; }
+  .opt { display: flex; gap: 8px; align-items: flex-start; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin: 8px 0; cursor: pointer; }
+  .opt:has(input:checked) { border-color: var(--primary); background: #eef5fd; }
+  .opt small { color: var(--muted); }
+  .opt select { font: inherit; margin-top: 6px; padding: 4px 6px; }
 </style>
 </head>
 <body>
@@ -113,7 +152,10 @@
   </nav>
 
   <section id="timer" role="tabpanel" aria-labelledby="tab-timer" data-band="idle">
-    <div class="tasks" id="tasks" role="group" aria-label="Task"></div>
+    <div class="task-row">
+      <div class="tasks" id="tasks" role="group" aria-label="Task"></div>
+      <button type="button" class="gear" id="btn-edit-tasks" aria-label="Edit task types" title="Edit task types">&#9881;</button>
+    </div>
 
     <div class="ring">
       <svg viewBox="0 0 200 200" aria-hidden="true">
@@ -159,6 +201,36 @@
   </section>
 </main>
 
+<dialog id="task-editor" aria-labelledby="te-title">
+  <h2 id="te-title">Task types</h2>
+  <p class="dlg-sub">Drag the dots to reorder. This is the order of the buttons, left to right.</p>
+  <div class="te-hdr"><span></span><span>Color</span><span>Name shown</span><span>Name in CSV</span><span></span></div>
+  <div id="te-rows"></div>
+  <button type="button" class="link" id="te-add">+ Add task type</button>
+  <p class="dlg-error" id="te-error" role="alert" hidden></p>
+  <div class="dlg-actions">
+    <button type="button" id="te-cancel">Cancel</button>
+    <button type="button" class="primary" id="te-save">Save</button>
+  </div>
+</dialog>
+
+<dialog id="task-remove" aria-labelledby="tr-title">
+  <h2 id="tr-title"></h2>
+  <p class="dlg-sub" id="tr-sub"></p>
+  <label class="opt">
+    <input type="radio" name="tr-mode" value="archive" checked>
+    <span><b>Keep past reports as they are</b><br><small>Old sessions still show under this name on the dashboard. You just can't pick it for new ones.</small></span>
+  </label>
+  <label class="opt">
+    <input type="radio" name="tr-mode" value="move">
+    <span><b>Move past sessions to another type</b><br><small>Rewrites those rows in sessions.csv.</small><br><select id="tr-target" aria-label="Move sessions to"></select></span>
+  </label>
+  <div class="dlg-actions">
+    <button type="button" id="tr-cancel">Cancel</button>
+    <button type="button" class="danger" id="tr-ok">Remove</button>
+  </div>
+</dialog>
+
 <script src="tasks.js"></script>
 <script src="logic.js"></script>
 <script src="chart.umd.js"></script>
@@ -189,20 +261,36 @@
   $('tab-dashboard').addEventListener('click', () => showTab('dashboard'));
 
   // ---- task toggles ----
-  const taskButtons = L.TASK_DEFS.map(({ ui, db: task }) => {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.className = 'task';
-    b.textContent = ui;
-    b.setAttribute('aria-pressed', 'false');
-    b.addEventListener('click', () => {
-      if (state.status !== 'idle') return;
-      selectedTask = selectedTask === task ? null : task;
-      render();
+  let taskButtons = [];
+  let taskDbs = [];
+  function buildTaskButtons() {
+    $('tasks').replaceChildren();
+    taskDbs = L.ACTIVE_TASK_DEFS.map((t) => t.db);
+    taskButtons = L.ACTIVE_TASK_DEFS.map(({ ui, db: task }) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'task';
+      b.textContent = ui;
+      b.setAttribute('aria-pressed', 'false');
+      b.addEventListener('click', () => {
+        if (state.status !== 'idle') return;
+        selectedTask = selectedTask === task ? null : task;
+        render();
+      });
+      $('tasks').appendChild(b);
+      return b;
     });
-    $('tasks').appendChild(b);
-    return b;
-  });
+  }
+
+  // The task list is owned by the server (tasks.json); fall back to the built-in defaults if it can't be read.
+  async function loadTasks() {
+    try {
+      const res = await fetch('/api/tasks');
+      if (res.ok) L.setTasks((await res.json()).tasks);
+    } catch (_) { /* keep defaults */ }
+    buildTaskButtons();
+    render(true);
+  }
 
   // ---- planned length inputs ----
   const planH = $('plan-h');
@@ -324,7 +412,7 @@
     $('paused-label').textContent = state.status === 'paused' ? 'Paused' : '';
 
     taskButtons.forEach((b, i) => {
-      const task = L.TASKS[i];
+      const task = taskDbs[i];
       const active = idle ? selectedTask === task : state.task === task;
       b.setAttribute('aria-pressed', String(active));
       b.disabled = !idle;
@@ -332,12 +420,205 @@
 
     const main = $('btn-main');
     main.textContent = idle ? '▶ Start' : state.status === 'running' ? '❚❚ Pause' : '▶ Resume';
+    $('btn-edit-tasks').disabled = !idle;
     main.disabled = idle && !selectedTask;
     $('btn-stop').disabled = idle;
     $('hint').textContent = idle && !selectedTask ? 'Pick a task to start' : '';
   }
 
+  // ---- task editor ----
+  const Tasks = window.Tasks;
+  const editor = $('task-editor');
+  const rowsEl = $('te-rows');
+  const PALETTE = ['#e15759', '#76b7b2', '#edc949', '#ff9da7', '#9c755f', '#bab0ab'];
+  let draft = [];      // { ui, db, color, saved, dbTouched }
+  let dragFrom = -1;
+  let focusRow = -1;
+
+  function showEditorError(message) {
+    $('te-error').textContent = message;
+    $('te-error').hidden = false;
+  }
+
+  function renderRows() {
+    rowsEl.replaceChildren();
+    draft.forEach((item, i) => {
+      const row = document.createElement('div');
+      row.className = 'te-row';
+
+      const grip = document.createElement('span');
+      grip.className = 'te-grip';
+      grip.textContent = '⋮⋮';
+      grip.title = 'Drag to reorder';
+      grip.addEventListener('mousedown', () => { row.draggable = true; });
+      grip.addEventListener('mouseup', () => { row.draggable = false; });
+
+      const color = document.createElement('input');
+      color.type = 'color';
+      color.value = item.color;
+      color.setAttribute('aria-label', 'Color');
+      color.addEventListener('input', () => { item.color = color.value; });
+
+      const ui = document.createElement('input');
+      ui.type = 'text';
+      ui.value = item.ui;
+      ui.setAttribute('aria-label', 'Name shown');
+      const db = document.createElement('input');
+      db.type = 'text';
+      db.value = item.db;
+      db.readOnly = item.saved;
+      db.title = item.saved ? 'Locked: changing it would orphan old CSV rows' : '';
+      db.setAttribute('aria-label', 'Name in CSV');
+      ui.addEventListener('input', () => {
+        item.ui = ui.value;
+        if (!item.saved && !item.dbTouched) { item.db = ui.value; db.value = ui.value; }
+      });
+      db.addEventListener('input', () => { item.db = db.value; item.dbTouched = true; });
+
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'te-remove';
+      remove.textContent = '×';
+      remove.setAttribute('aria-label', 'Remove ' + (item.ui || 'task type'));
+      remove.addEventListener('click', () => { draft.splice(i, 1); renderRows(); });
+
+      row.addEventListener('dragstart', (e) => {
+        dragFrom = i;
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', String(i));
+        row.classList.add('dragging');
+      });
+      row.addEventListener('dragover', (e) => {
+        if (dragFrom < 0) return;
+        e.preventDefault();
+        row.classList.add('over');
+      });
+      row.addEventListener('dragleave', () => row.classList.remove('over'));
+      row.addEventListener('drop', (e) => {
+        e.preventDefault();
+        if (dragFrom < 0) return;
+        const [moved] = draft.splice(dragFrom, 1);
+        draft.splice(i, 0, moved);
+        dragFrom = -1;
+        renderRows();
+      });
+      row.addEventListener('dragend', () => { dragFrom = -1; renderRows(); });
+
+      row.append(grip, color, ui, db, remove);
+      rowsEl.appendChild(row);
+      if (i === focusRow) { ui.focus(); focusRow = -1; }
+    });
+  }
+
+  function openEditor() {
+    draft = L.ACTIVE_TASK_DEFS.map((t) => ({ ui: t.ui, db: t.db, color: t.color, saved: true, dbTouched: true }));
+    $('te-error').hidden = true;
+    renderRows();
+    editor.showModal();
+  }
+
+  $('btn-edit-tasks').addEventListener('click', () => { if (state.status === 'idle') openEditor(); });
+  $('te-cancel').addEventListener('click', () => editor.close());
+  $('te-add').addEventListener('click', () => {
+    const used = new Set(draft.map((d) => d.color));
+    const color = PALETTE.find((c) => !used.has(c)) || '#888888';
+    draft.push({ ui: '', db: '', color, saved: false, dbTouched: false });
+    focusRow = draft.length - 1;
+    renderRows();
+  });
+
+  // Ask what to do with the past sessions of a removed type. Resolves 'archive', { moveTo } or null (cancel).
+  function askRemoval(def, count, targets) {
+    return new Promise((resolve) => {
+      const dlg = $('task-remove');
+      const select = $('tr-target');
+      const moveRadio = document.querySelector('input[name="tr-mode"][value="move"]');
+      $('tr-title').textContent = 'Remove "' + def.ui + '"?';
+      $('tr-sub').textContent = 'It has ' + count + ' recorded session' + (count === 1 ? '' : 's') + '.';
+      select.replaceChildren();
+      for (const t of targets) {
+        const o = document.createElement('option');
+        o.value = t.db;
+        o.textContent = t.ui;
+        select.appendChild(o);
+      }
+      moveRadio.disabled = targets.length === 0;
+      select.disabled = targets.length === 0;
+      select.onfocus = () => { moveRadio.checked = true; };
+      document.querySelector('input[name="tr-mode"][value="archive"]').checked = true;
+      const finish = (value) => {
+        dlg.oncancel = null;
+        $('tr-ok').onclick = null;
+        $('tr-cancel').onclick = null;
+        if (dlg.open) dlg.close();
+        resolve(value);
+      };
+      $('tr-ok').onclick = () => {
+        const mode = document.querySelector('input[name="tr-mode"]:checked').value;
+        finish(mode === 'move' ? { moveTo: select.value } : 'archive');
+      };
+      $('tr-cancel').onclick = () => finish(null);
+      dlg.oncancel = (e) => { e.preventDefault(); finish(null); };
+      dlg.showModal();
+    });
+  }
+
+  async function saveEditor() {
+    $('te-error').hidden = true;
+    const rows = draft.map((r) => ({ ui: r.ui.trim(), db: r.db.trim(), color: r.color }));
+    const archived = L.TASK_DEFS.filter((t) => t.archived);
+    const problem = Tasks.validateTaskDefs(rows.concat(archived));
+    if (problem) {
+      const clash = archived.find((t) => rows.some((r) => r.db === t.db));
+      return showEditorError(clash ? '"' + clash.db + '" is the CSV name of a removed type. Pick a different name in CSV.' : problem);
+    }
+
+    // count the recorded sessions of every type that is being removed
+    const kept = new Set(rows.map((r) => r.db));
+    const removed = L.ACTIVE_TASK_DEFS.filter((t) => !kept.has(t.db));
+    const counts = {};
+    if (removed.length > 0) {
+      try {
+        const res = await fetch('/api/sessions');
+        if (!res.ok) throw new Error('status ' + res.status);
+        for (const s of L.parseCsv(await res.text()).sessions) counts[s.task] = (counts[s.task] || 0) + 1;
+      } catch (e) {
+        return showEditorError('Could not read the recorded sessions: ' + e.message);
+      }
+    }
+    const decisions = {};
+    for (const t of removed) {
+      if (!counts[t.db]) { decisions[t.db] = 'delete'; continue; }
+      const decision = await askRemoval(t, counts[t.db], rows);
+      if (decision === null) return;
+      decisions[t.db] = decision;
+    }
+
+    const { tasks, remap } = L.applyTaskEdits(L.TASK_DEFS, rows, decisions);
+    try {
+      const res = await fetch('/api/tasks', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tasks, remap }),
+      });
+      if (!res.ok) {
+        let message = 'The server answered with status ' + res.status + '.';
+        try { message = (await res.json()).error || message; } catch (_) { /* keep default */ }
+        return showEditorError(message);
+      }
+    } catch (_) {
+      return showEditorError('Could not reach the local server. Is it still running?');
+    }
+    L.setTasks(tasks);
+    if (selectedTask && !L.ACTIVE_TASK_DEFS.some((t) => t.db === selectedTask)) selectedTask = null;
+    buildTaskButtons();
+    render(true);
+    editor.close();
+  }
+  $('te-save').addEventListener('click', saveEditor);
+
   render(true);
+  loadTasks();
   setInterval(render, 1000);
 })();
 </script>
