@@ -203,7 +203,7 @@
 
 <dialog id="task-editor" aria-labelledby="te-title">
   <h2 id="te-title">Task types</h2>
-  <p class="dlg-sub">Drag the dots to reorder. This is the order of the buttons, left to right.</p>
+  <p class="dlg-sub">Drag the dots to reorder. This is the order of the buttons, left to right. Changing "Name in CSV" also renames it in past sessions.</p>
   <div class="te-hdr"><span></span><span>Color</span><span>Name shown</span><span>Name in CSV</span><span></span></div>
   <div id="te-rows"></div>
   <button type="button" class="link" id="te-add">+ Add task type</button>
@@ -466,8 +466,7 @@
       const db = document.createElement('input');
       db.type = 'text';
       db.value = item.db;
-      db.readOnly = item.saved;
-      db.title = item.saved ? 'Locked: changing it would orphan old CSV rows' : '';
+      db.title = item.saved ? 'Changing this also renames it in past sessions in sessions.csv' : '';
       db.setAttribute('aria-label', 'Name in CSV');
       ui.addEventListener('input', () => {
         item.ui = ui.value;
@@ -511,7 +510,7 @@
   }
 
   function openEditor() {
-    draft = L.ACTIVE_TASK_DEFS.map((t) => ({ ui: t.ui, db: t.db, color: t.color, saved: true, dbTouched: true }));
+    draft = L.ACTIVE_TASK_DEFS.map((t) => ({ ui: t.ui, db: t.db, origDb: t.db, color: t.color, saved: true, dbTouched: true }));
     $('te-error').hidden = true;
     renderRows();
     editor.showModal();
@@ -589,6 +588,9 @@
     const decisions = {};
     for (const t of removed) {
       if (!counts[t.db]) { decisions[t.db] = 'delete'; continue; }
+      // a saved row whose CSV name was edited is a rename: its past sessions follow it
+      const renamed = draft.find((r) => r.origDb === t.db);
+      if (renamed) { decisions[t.db] = { moveTo: renamed.db.trim() }; continue; }
       const decision = await askRemoval(t, counts[t.db], rows);
       if (decision === null) return;
       decisions[t.db] = decision;
