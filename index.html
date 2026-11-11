@@ -1,0 +1,628 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pomodoro</title>
+<style>
+  :root {
+    --bg: #f3f3f3;
+    --card: #ffffff;
+    --line: #dcdcdc;
+    --text: #1f1f1f;
+    --muted: #6b6b6b;
+    --primary: #005fb8;
+    --primary-hover: #004c94;
+    /* timer colours, swapped by JS through data-band on #timer */
+    --t-text: #5f5f5f;
+    --t-track: #e6e6e6;
+    --t-arc: #e6e6e6;
+  }
+  #timer[data-band="red"]    { --t-text: #c62828; --t-track: #f9dcdc; --t-arc: #e89a9a; }
+  #timer[data-band="orange"] { --t-text: #e07000; --t-track: #fde6cc; --t-arc: #f3b46b; }
+  #timer[data-band="green"]  { --t-text: #1b6e3a; --t-track: #d6eedd; --t-arc: #86c49b; }
+  #timer[data-band="violet"] { --t-text: #6a3fb5; --t-track: #e7defa; --t-arc: #b39ae0; }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: "Segoe UI Variable", "Segoe UI", sans-serif;
+  }
+  main { max-width: 960px; margin: 0 auto; padding: 16px; }
+
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 24px; }
+  .tab {
+    border: 0; background: none; font: inherit; font-size: 15px; color: var(--muted);
+    padding: 10px 18px; cursor: pointer; border-bottom: 3px solid transparent; margin-bottom: -1px;
+  }
+  .tab:hover { color: var(--text); }
+  .tab[aria-selected="true"] { color: var(--primary); border-bottom-color: var(--primary); font-weight: 600; }
+  .tab:focus-visible, button:focus-visible, input:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+
+  [hidden] { display: none !important; }
+
+  /* ---- timer tab ---- */
+  #timer { display: flex; flex-direction: column; align-items: center; gap: 28px; }
+  .tasks { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+  .task {
+    font: inherit; font-size: 14px; padding: 8px 16px; border-radius: 999px; cursor: pointer;
+    border: 1px solid var(--line); background: var(--card); color: var(--text);
+  }
+  .task:hover:not(:disabled) { border-color: var(--primary); }
+  .task[aria-pressed="true"] { background: var(--primary); border-color: var(--primary); color: #fff; }
+  .task:disabled { cursor: default; opacity: .5; }
+  .task[aria-pressed="true"]:disabled { opacity: 1; }
+
+  .ring { position: relative; width: min(80vw, 320px); aspect-ratio: 1; }
+  .ring svg { width: 100%; height: 100%; display: block; }
+  .ring circle { fill: none; stroke-width: 14; }
+  #ring-track { stroke: var(--t-track); transition: stroke .3s; }
+  #ring-arc { stroke: var(--t-arc); stroke-linecap: round; transition: stroke .3s; }
+  .ring-text {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 6px; color: var(--t-text); transition: color .3s;
+  }
+  .clock {
+    display: flex; align-items: baseline; gap: .3em; white-space: nowrap;
+    font-size: clamp(24px, 8vw, 36px); font-variant-numeric: tabular-nums;
+  }
+  .planned { display: inline-flex; align-items: baseline; }
+  .planned input {
+    width: 1.7em; padding: 0; margin: 0; border: 0; border-bottom: 2px solid transparent; border-radius: 0;
+    background: transparent; font: inherit; color: inherit; text-align: center; font-variant-numeric: tabular-nums;
+  }
+  .planned input:not(:disabled) { border-bottom-color: currentColor; cursor: text; }
+  .planned input:disabled { opacity: 1; -webkit-text-fill-color: currentColor; }
+  .paused-label { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; min-height: 1.2em; }
+
+  .controls { display: flex; gap: 20px; align-items: center; }
+  .round {
+    width: 64px; height: 64px; border-radius: 50%; border: 0; cursor: pointer;
+    font: inherit; font-size: 18px; display: grid; place-items: center;
+  }
+  .round.primary { background: var(--primary); color: #fff; width: 88px; height: 88px; font-size: 16px; }
+  .round.primary:hover:not(:disabled) { background: var(--primary-hover); }
+  .round.secondary { background: var(--card); color: var(--text); border: 1px solid var(--line); }
+  .round.secondary:hover:not(:disabled) { border-color: var(--text); }
+  .round:disabled { opacity: .4; cursor: not-allowed; }
+
+  .hint { color: var(--muted); font-size: 13px; min-height: 1.2em; margin: -12px 0 0; }
+
+  .error-panel {
+    width: min(100%, 520px); background: #fdecea; border: 1px solid #e89a9a; color: #7a1c1c;
+    border-radius: 8px; padding: 14px 16px;
+  }
+  .error-panel strong { display: block; margin-bottom: 4px; }
+  .error-panel p { margin: 0 0 10px; font-size: 14px; word-break: break-word; }
+  .error-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .error-actions button {
+    font: inherit; font-size: 14px; padding: 6px 14px; border-radius: 6px; cursor: pointer;
+    border: 1px solid #c62828; background: #fff; color: #7a1c1c;
+  }
+  .error-actions button:hover { background: #fbe0dd; }
+  .copied { font-size: 13px; }
+
+  .placeholder { color: var(--muted); text-align: center; padding: 48px 0; }
+
+  /* ---- task editor ---- */
+  .task-row { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px; }
+  .gear {
+    width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--line); background: var(--card);
+    color: var(--muted); font-size: 18px; line-height: 1; cursor: pointer; display: grid; place-items: center;
+  }
+  .gear:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); }
+  .gear:disabled { opacity: .4; cursor: not-allowed; }
+
+  dialog {
+    border: 1px solid #cfcfcf; border-radius: 10px; padding: 18px 20px; color: var(--text); background: var(--card);
+    box-shadow: 0 8px 28px rgba(0,0,0,.25); font: inherit; font-size: 14px;
+  }
+  dialog::backdrop { background: rgba(0,0,0,.3); }
+  dialog h2 { margin: 0 0 4px; font-size: 17px; }
+  .dlg-sub { margin: 0 0 8px; color: var(--muted); }
+  #task-editor { width: min(94vw, 620px); }
+  #task-remove { width: min(94vw, 440px); }
+  .te-hdr, .te-row { display: grid; grid-template-columns: 22px 34px 1fr 1fr 28px; gap: 8px; align-items: center; }
+  .te-hdr { color: var(--muted); font-size: 11px; text-transform: uppercase; margin: 12px 0 4px; }
+  .te-row { padding: 4px 0; border-radius: 6px; }
+  .te-row.dragging { opacity: .4; }
+  .te-row.over { box-shadow: 0 -2px 0 var(--primary); }
+  .te-grip { color: #8a8a8a; font-size: 16px; letter-spacing: -2px; cursor: grab; user-select: none; text-align: center; }
+  .te-row input[type="color"] { width: 30px; height: 30px; padding: 0; border: 0; background: none; cursor: pointer; }
+  .te-row input[type="text"] { font: inherit; padding: 6px 8px; border: 1px solid #cfcfcf; border-radius: 6px; min-width: 0; width: 100%; }
+  .te-row input[readonly] { background: #f1f1f1; color: #777; }
+  .te-remove { border: 0; background: none; color: #b33; font-size: 18px; cursor: pointer; }
+  .link { border: 0; background: none; color: var(--primary); font: inherit; cursor: pointer; padding: 6px 0; margin: 6px 0 10px; }
+  .dlg-error { color: #7a1c1c; background: #fdecea; border-radius: 6px; padding: 8px 10px; margin: 0 0 10px; }
+  .dlg-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+  .dlg-actions button { font: inherit; padding: 7px 16px; border-radius: 6px; border: 1px solid #cfcfcf; background: var(--card); cursor: pointer; }
+  .dlg-actions .primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+  .dlg-actions .danger { background: #c62828; border-color: #c62828; color: #fff; }
+  .opt { display: flex; gap: 8px; align-items: flex-start; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin: 8px 0; cursor: pointer; }
+  .opt:has(input:checked) { border-color: var(--primary); background: #eef5fd; }
+  .opt small { color: var(--muted); }
+  .opt select { font: inherit; margin-top: 6px; padding: 4px 6px; }
+</style>
+</head>
+<body>
+<main>
+  <nav class="tabs" role="tablist" aria-label="Views">
+    <button class="tab" role="tab" id="tab-timer" aria-controls="timer" aria-selected="true">Timer</button>
+    <button class="tab" role="tab" id="tab-dashboard" aria-controls="dashboard" aria-selected="false">Dashboard</button>
+  </nav>
+
+  <section id="timer" role="tabpanel" aria-labelledby="tab-timer" data-band="idle">
+    <div class="task-row">
+      <div class="tasks" id="tasks" role="group" aria-label="Task"></div>
+      <button type="button" class="gear" id="btn-edit-tasks" aria-label="Edit task types" title="Edit task types">&#9881;</button>
+    </div>
+
+    <div class="ring">
+      <svg viewBox="0 0 200 200" aria-hidden="true">
+        <!-- rotated so the arc starts at 12 o'clock -->
+        <g transform="rotate(-90 100 100)">
+          <circle id="ring-track" cx="100" cy="100" r="90"></circle>
+          <circle id="ring-arc" cx="100" cy="100" r="90"></circle>
+        </g>
+      </svg>
+      <div class="ring-text">
+        <div class="clock">
+          <span id="elapsed" aria-label="Elapsed time">00:00</span>
+          <span>/</span>
+          <span class="planned">
+            <input id="plan-h" inputmode="numeric" maxlength="2" aria-label="Planned hours" autocomplete="off">
+            <span>:</span>
+            <input id="plan-m" inputmode="numeric" maxlength="2" aria-label="Planned minutes" autocomplete="off">
+          </span>
+        </div>
+        <div class="paused-label" id="paused-label" aria-live="polite"></div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button class="round primary" id="btn-main" type="button"></button>
+      <button class="round secondary" id="btn-stop" type="button" aria-label="Stop and save">&#9632;</button>
+    </div>
+    <p class="hint" id="hint"></p>
+
+    <div class="error-panel" id="error-panel" role="alert" hidden>
+      <strong>Session not saved</strong>
+      <p id="error-text"></p>
+      <div class="error-actions">
+        <button type="button" id="btn-retry">Retry save</button>
+        <button type="button" id="btn-copy">Copy session</button>
+        <span class="copied" id="copied" hidden>Copied &mdash; paste it as a new line in sessions.csv</span>
+      </div>
+    </div>
+  </section>
+
+  <section id="dashboard" role="tabpanel" aria-labelledby="tab-dashboard" hidden>
+    <p class="placeholder">The dashboard is coming next.</p>
+  </section>
+</main>
+
+<dialog id="task-editor" aria-labelledby="te-title">
+  <h2 id="te-title">Task types</h2>
+  <p class="dlg-sub">Drag the dots to reorder. This is the order of the buttons, left to right. Changing "Name in CSV" also renames it in past sessions.</p>
+  <div class="te-hdr"><span></span><span>Color</span><span>Name shown</span><span>Name in CSV</span><span></span></div>
+  <div id="te-rows"></div>
+  <button type="button" class="link" id="te-add">+ Add task type</button>
+  <p class="dlg-error" id="te-error" role="alert" hidden></p>
+  <div class="dlg-actions">
+    <button type="button" id="te-cancel">Cancel</button>
+    <button type="button" class="primary" id="te-save">Save</button>
+  </div>
+</dialog>
+
+<dialog id="task-remove" aria-labelledby="tr-title">
+  <h2 id="tr-title"></h2>
+  <p class="dlg-sub" id="tr-sub"></p>
+  <label class="opt">
+    <input type="radio" name="tr-mode" value="archive" checked>
+    <span><b>Keep past reports as they are</b><br><small>Old sessions still show under this name on the dashboard. You just can't pick it for new ones.</small></span>
+  </label>
+  <label class="opt">
+    <input type="radio" name="tr-mode" value="move">
+    <span><b>Move past sessions to another type</b><br><small>Rewrites those rows in sessions.csv.</small><br><select id="tr-target" aria-label="Move sessions to"></select></span>
+  </label>
+  <div class="dlg-actions">
+    <button type="button" id="tr-cancel">Cancel</button>
+    <button type="button" class="danger" id="tr-ok">Remove</button>
+  </div>
+</dialog>
+
+<script src="tasks.js"></script>
+<script src="logic.js"></script>
+<script src="chart.umd.js"></script>
+<script>
+(function () {
+  'use strict';
+  const L = window.Logic;
+  const $ = (id) => document.getElementById(id);
+
+  // ---- clock (dev-only ?speed=N makes time run N x faster from page load) ----
+  const speed = Number(new URLSearchParams(location.search).get('speed')) || 1;
+  const t0 = Date.now();
+  const now = () => (speed === 1 ? Date.now() : t0 + (Date.now() - t0) * speed);
+
+  // ---- state ----
+  let state = L.createTimer(45);
+  let selectedTask = null;
+  let pendingSession = null;
+
+  // ---- tabs (switching never touches the timer state) ----
+  function showTab(name) {
+    for (const id of ['timer', 'dashboard']) {
+      $(id).hidden = id !== name;
+      $('tab-' + id).setAttribute('aria-selected', String(id === name));
+    }
+  }
+  $('tab-timer').addEventListener('click', () => showTab('timer'));
+  $('tab-dashboard').addEventListener('click', () => showTab('dashboard'));
+
+  // ---- task toggles ----
+  let taskButtons = [];
+  let taskDbs = [];
+  function buildTaskButtons() {
+    $('tasks').replaceChildren();
+    taskDbs = L.ACTIVE_TASK_DEFS.map((t) => t.db);
+    taskButtons = L.ACTIVE_TASK_DEFS.map(({ ui, db: task }) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'task';
+      b.textContent = ui;
+      b.setAttribute('aria-pressed', 'false');
+      b.addEventListener('click', () => {
+        if (state.status !== 'idle') return;
+        selectedTask = selectedTask === task ? null : task;
+        render();
+      });
+      $('tasks').appendChild(b);
+      return b;
+    });
+  }
+
+  // The task list is owned by the server (tasks.json); fall back to the built-in defaults if it can't be read.
+  async function loadTasks() {
+    try {
+      const res = await fetch('/api/tasks');
+      if (res.ok) L.setTasks((await res.json()).tasks);
+    } catch (_) { /* keep defaults */ }
+    buildTaskButtons();
+    render(true);
+  }
+
+  // ---- planned length inputs ----
+  const planH = $('plan-h');
+  const planM = $('plan-m');
+  const two = (n) => String(n).padStart(2, '0');
+
+  function commitPlanned() {
+    if (state.status !== 'idle') return;
+    state = { ...state, plannedMin: L.setPlanned(planH.value, planM.value) };
+    render(true);
+  }
+  for (const input of [planH, planM]) {
+    const field = input === planH ? 'h' : 'm';
+    input.addEventListener('focus', () => input.select());
+    input.addEventListener('blur', commitPlanned);
+    input.addEventListener('keydown', (e) => {
+      if (state.status !== 'idle') return;
+      if (e.key === 'Enter') {
+        commitPlanned();
+        input.blur();
+      } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        state = { ...state, plannedMin: L.adjustPlanned(state.plannedMin, field, e.key === 'ArrowUp' ? 1 : -1) };
+        render(true);
+        input.select();
+      }
+    });
+  }
+
+  // ---- buttons ----
+  $('btn-main').addEventListener('click', () => {
+    const t = now();
+    if (state.status === 'idle') {
+      if (!selectedTask) return;
+      if (document.activeElement === planH || document.activeElement === planM) commitPlanned();
+      state = L.startTimer(state, selectedTask, t);
+    } else if (state.status === 'running') {
+      state = L.pauseTimer(state, t);
+    } else {
+      state = L.resumeTimer(state, t);
+    }
+    render();
+  });
+
+  $('btn-stop').addEventListener('click', () => {
+    if (state.status === 'idle') return;
+    const result = L.stopTimer(state, now());
+    state = result.state;
+    selectedTask = null;
+    render(true);
+    if (result.session) saveSession(result.session);
+  });
+
+  // ---- saving ----
+  async function saveSession(session) {
+    pendingSession = session;
+    $('copied').hidden = true;
+    try {
+      const res = await fetch('/api/sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(session),
+      });
+      if (res.status === 201) {
+        pendingSession = null;
+        $('error-panel').hidden = true;
+        return;
+      }
+      let message = 'The server answered with status ' + res.status + '.';
+      try { message = (await res.json()).error || message; } catch (_) { /* keep default */ }
+      showError(message);
+    } catch (_) {
+      showError('Could not reach the local server. Is it still running?');
+    }
+  }
+
+  function showError(message) {
+    $('error-text').textContent = message;
+    $('error-panel').hidden = false;
+  }
+
+  $('btn-retry').addEventListener('click', () => { if (pendingSession) saveSession(pendingSession); });
+  $('btn-copy').addEventListener('click', async () => {
+    if (!pendingSession) return;
+    const row = L.sessionToCsvRow(pendingSession);
+    try {
+      await navigator.clipboard.writeText(row);
+      $('copied').textContent = 'Copied — paste it as a new line in sessions.csv';
+    } catch (_) {
+      $('copied').textContent = 'Copy failed. Select this row manually: ' + row;
+    }
+    $('copied').hidden = false;
+  });
+
+  // ---- render ----
+  const R = 90;
+  const CIRC = 2 * Math.PI * R;
+  const arc = $('ring-arc');
+  arc.setAttribute('stroke-dasharray', '0 ' + CIRC);
+  $('ring-track').setAttribute('stroke-dasharray', 'none');
+
+  function render(forceInputs) {
+    const idle = state.status === 'idle';
+    const ms = L.activeMs(state, now());
+
+    $('elapsed').textContent = L.formatHM(Math.floor(ms / 60000));
+    $('timer').dataset.band = idle ? 'idle' : L.colorBand(ms, state.plannedMin);
+
+    const frac = idle ? 0 : L.ringFraction(ms, state.plannedMin);
+    arc.setAttribute('stroke-dasharray', (frac * CIRC) + ' ' + CIRC);
+    arc.style.opacity = frac > 0 ? '1' : '0';
+
+    // never overwrite what the user is typing
+    for (const [input, value] of [[planH, Math.floor(state.plannedMin / 60)], [planM, state.plannedMin % 60]]) {
+      input.disabled = !idle;
+      if (forceInputs || document.activeElement !== input) input.value = two(value);
+    }
+
+    $('paused-label').textContent = state.status === 'paused' ? 'Paused' : '';
+
+    taskButtons.forEach((b, i) => {
+      const task = taskDbs[i];
+      const active = idle ? selectedTask === task : state.task === task;
+      b.setAttribute('aria-pressed', String(active));
+      b.disabled = !idle;
+    });
+
+    const main = $('btn-main');
+    main.textContent = idle ? '▶ Start' : state.status === 'running' ? '❚❚ Pause' : '▶ Resume';
+    $('btn-edit-tasks').disabled = !idle;
+    main.disabled = idle && !selectedTask;
+    $('btn-stop').disabled = idle;
+    $('hint').textContent = idle && !selectedTask ? 'Pick a task to start' : '';
+  }
+
+  // ---- task editor ----
+  const Tasks = window.Tasks;
+  const editor = $('task-editor');
+  const rowsEl = $('te-rows');
+  const PALETTE = ['#e15759', '#76b7b2', '#edc949', '#ff9da7', '#9c755f', '#bab0ab'];
+  let draft = [];      // { ui, db, color, saved, dbTouched }
+  let dragFrom = -1;
+  let focusRow = -1;
+
+  function showEditorError(message) {
+    $('te-error').textContent = message;
+    $('te-error').hidden = false;
+  }
+
+  function renderRows() {
+    rowsEl.replaceChildren();
+    draft.forEach((item, i) => {
+      const row = document.createElement('div');
+      row.className = 'te-row';
+
+      const grip = document.createElement('span');
+      grip.className = 'te-grip';
+      grip.textContent = '⋮⋮';
+      grip.title = 'Drag to reorder';
+      grip.addEventListener('mousedown', () => { row.draggable = true; });
+      grip.addEventListener('mouseup', () => { row.draggable = false; });
+
+      const color = document.createElement('input');
+      color.type = 'color';
+      color.value = item.color;
+      color.setAttribute('aria-label', 'Color');
+      color.addEventListener('input', () => { item.color = color.value; });
+
+      const ui = document.createElement('input');
+      ui.type = 'text';
+      ui.value = item.ui;
+      ui.setAttribute('aria-label', 'Name shown');
+      const db = document.createElement('input');
+      db.type = 'text';
+      db.value = item.db;
+      db.title = item.saved ? 'Changing this also renames it in past sessions in sessions.csv' : '';
+      db.setAttribute('aria-label', 'Name in CSV');
+      ui.addEventListener('input', () => {
+        item.ui = ui.value;
+        if (!item.saved && !item.dbTouched) { item.db = ui.value; db.value = ui.value; }
+      });
+      db.addEventListener('input', () => { item.db = db.value; item.dbTouched = true; });
+
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'te-remove';
+      remove.textContent = '×';
+      remove.setAttribute('aria-label', 'Remove ' + (item.ui || 'task type'));
+      remove.addEventListener('click', () => { draft.splice(i, 1); renderRows(); });
+
+      row.addEventListener('dragstart', (e) => {
+        dragFrom = i;
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', String(i));
+        row.classList.add('dragging');
+      });
+      row.addEventListener('dragover', (e) => {
+        if (dragFrom < 0) return;
+        e.preventDefault();
+        row.classList.add('over');
+      });
+      row.addEventListener('dragleave', () => row.classList.remove('over'));
+      row.addEventListener('drop', (e) => {
+        e.preventDefault();
+        if (dragFrom < 0) return;
+        const [moved] = draft.splice(dragFrom, 1);
+        draft.splice(i, 0, moved);
+        dragFrom = -1;
+        renderRows();
+      });
+      row.addEventListener('dragend', () => { dragFrom = -1; renderRows(); });
+
+      row.append(grip, color, ui, db, remove);
+      rowsEl.appendChild(row);
+      if (i === focusRow) { ui.focus(); focusRow = -1; }
+    });
+  }
+
+  function openEditor() {
+    draft = L.ACTIVE_TASK_DEFS.map((t) => ({ ui: t.ui, db: t.db, origDb: t.db, color: t.color, saved: true, dbTouched: true }));
+    $('te-error').hidden = true;
+    renderRows();
+    editor.showModal();
+  }
+
+  $('btn-edit-tasks').addEventListener('click', () => { if (state.status === 'idle') openEditor(); });
+  $('te-cancel').addEventListener('click', () => editor.close());
+  $('te-add').addEventListener('click', () => {
+    const used = new Set(draft.map((d) => d.color));
+    const color = PALETTE.find((c) => !used.has(c)) || '#888888';
+    draft.push({ ui: '', db: '', color, saved: false, dbTouched: false });
+    focusRow = draft.length - 1;
+    renderRows();
+  });
+
+  // Ask what to do with the past sessions of a removed type. Resolves 'archive', { moveTo } or null (cancel).
+  function askRemoval(def, count, targets) {
+    return new Promise((resolve) => {
+      const dlg = $('task-remove');
+      const select = $('tr-target');
+      const moveRadio = document.querySelector('input[name="tr-mode"][value="move"]');
+      $('tr-title').textContent = 'Remove "' + def.ui + '"?';
+      $('tr-sub').textContent = 'It has ' + count + ' recorded session' + (count === 1 ? '' : 's') + '.';
+      select.replaceChildren();
+      for (const t of targets) {
+        const o = document.createElement('option');
+        o.value = t.db;
+        o.textContent = t.ui;
+        select.appendChild(o);
+      }
+      moveRadio.disabled = targets.length === 0;
+      select.disabled = targets.length === 0;
+      select.onfocus = () => { moveRadio.checked = true; };
+      document.querySelector('input[name="tr-mode"][value="archive"]').checked = true;
+      const finish = (value) => {
+        dlg.oncancel = null;
+        $('tr-ok').onclick = null;
+        $('tr-cancel').onclick = null;
+        if (dlg.open) dlg.close();
+        resolve(value);
+      };
+      $('tr-ok').onclick = () => {
+        const mode = document.querySelector('input[name="tr-mode"]:checked').value;
+        finish(mode === 'move' ? { moveTo: select.value } : 'archive');
+      };
+      $('tr-cancel').onclick = () => finish(null);
+      dlg.oncancel = (e) => { e.preventDefault(); finish(null); };
+      dlg.showModal();
+    });
+  }
+
+  async function saveEditor() {
+    $('te-error').hidden = true;
+    const rows = draft.map((r) => ({ ui: r.ui.trim(), db: r.db.trim(), color: r.color }));
+    const archived = L.TASK_DEFS.filter((t) => t.archived);
+    const problem = Tasks.validateTaskDefs(rows.concat(archived));
+    if (problem) {
+      const clash = archived.find((t) => rows.some((r) => r.db === t.db));
+      return showEditorError(clash ? '"' + clash.db + '" is the CSV name of a removed type. Pick a different name in CSV.' : problem);
+    }
+
+    // count the recorded sessions of every type that is being removed
+    const kept = new Set(rows.map((r) => r.db));
+    const removed = L.ACTIVE_TASK_DEFS.filter((t) => !kept.has(t.db));
+    const counts = {};
+    if (removed.length > 0) {
+      try {
+        const res = await fetch('/api/sessions');
+        if (!res.ok) throw new Error('status ' + res.status);
+        for (const s of L.parseCsv(await res.text()).sessions) counts[s.task] = (counts[s.task] || 0) + 1;
+      } catch (e) {
+        return showEditorError('Could not read the recorded sessions: ' + e.message);
+      }
+    }
+    const decisions = {};
+    for (const t of removed) {
+      if (!counts[t.db]) { decisions[t.db] = 'delete'; continue; }
+      // a saved row whose CSV name was edited is a rename: its past sessions follow it
+      const renamed = draft.find((r) => r.origDb === t.db);
+      if (renamed) { decisions[t.db] = { moveTo: renamed.db.trim() }; continue; }
+      const decision = await askRemoval(t, counts[t.db], rows);
+      if (decision === null) return;
+      decisions[t.db] = decision;
+    }
+
+    const { tasks, remap } = L.applyTaskEdits(L.TASK_DEFS, rows, decisions);
+    try {
+      const res = await fetch('/api/tasks', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tasks, remap }),
+      });
+      if (!res.ok) {
+        let message = 'The server answered with status ' + res.status + '.';
+        try { message = (await res.json()).error || message; } catch (_) { /* keep default */ }
+        return showEditorError(message);
+      }
+    } catch (_) {
+      return showEditorError('Could not reach the local server. Is it still running?');
+    }
+    L.setTasks(tasks);
+    if (selectedTask && !L.ACTIVE_TASK_DEFS.some((t) => t.db === selectedTask)) selectedTask = null;
+    buildTaskButtons();
+    render(true);
+    editor.close();
+  }
+  $('te-save').addEventListener('click', saveEditor);
+
+  render(true);
+  loadTasks();
+  setInterval(render, 1000);
+})();
+</script>
+</body>
+</html>
