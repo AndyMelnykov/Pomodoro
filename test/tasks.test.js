@@ -4,8 +4,8 @@ const T = require('../tasks.js');
 
 const ok = { ui: 'A', db: 'a', color: '#aabbcc' };
 
-test('shipped TASK_DEFS are valid', () => {
-  assert.equal(T.validateTaskDefs(T.TASK_DEFS), null);
+test('shipped DEFAULT_TASK_DEFS are valid', () => {
+  assert.equal(T.validateTaskDefs(T.DEFAULT_TASK_DEFS), null);
 });
 test('accepts a minimal valid list', () => {
   assert.equal(T.validateTaskDefs([ok]), null);
@@ -29,4 +29,11 @@ test('rejects empty ui or db, and empty list', () => {
   assert.notEqual(T.validateTaskDefs([{ ...ok, db: '' }]), null);
   assert.notEqual(T.validateTaskDefs([]), null);
   assert.notEqual(T.validateTaskDefs(undefined), null);
+});
+test('rejects a list with no active type', () => {
+  assert.notEqual(T.validateTaskDefs([{ ...ok, archived: true }]), null);
+});
+test('accepts archived flag, rejects non-boolean archived', () => {
+  assert.equal(T.validateTaskDefs([ok, { ...ok, db: 'b', archived: true }]), null);
+  assert.notEqual(T.validateTaskDefs([ok, { ...ok, db: 'b', archived: 'yes' }]), null);
 });

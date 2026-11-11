@@ -3,10 +3,44 @@
   else root.Logic = factory(root.Tasks);
 })(this, function (Tasks) {
   // The task list lives in tasks.js. Everything here is keyed by the DB name.
-  const TASK_DEFS = Tasks.TASK_DEFS;
-  const TASKS = TASK_DEFS.map((t) => t.db);
-  const TASK_COLORS = Object.fromEntries(TASK_DEFS.map((t) => [t.db, t.color]));
+  // The list is runtime state (setTasks); archived types stay valid for past sessions but cannot be started.
+  let TASK_DEFS = [], ACTIVE_TASK_DEFS = [], TASKS = [], TASK_COLORS = {};
+  function setTasks(defs) {
+    const problem = Tasks.validateTaskDefs(defs);
+    if (problem) throw new Error(problem);
+    TASK_DEFS = defs.map((d) => ({ ...d }));
+    ACTIVE_TASK_DEFS = TASK_DEFS.filter((t) => !t.archived);
+    TASKS = TASK_DEFS.map((t) => t.db);
+    TASK_COLORS = Object.fromEntries(TASK_DEFS.map((t) => [t.db, t.color]));
+  }
+  setTasks(Tasks.DEFAULT_TASK_DEFS);
   const taskLabel = (db) => (TASK_DEFS.find((t) => t.db === db) || { ui: db }).ui;
+
+  // original: full list; draft: edited active rows in order; decisions: removed db -> 'archive' | 'delete' | { moveTo }
+  function applyTaskEdits(original, draft, decisions) {
+    const kept = new Set(draft.map((t) => t.db));
+    const archivedBefore = original.filter((t) => t.archived);
+    const removed = original.filter((t) => !t.archived && !kept.has(t.db));
+    const remap = {};
+    const newlyArchived = [];
+    for (const t of removed) {
+      const d = decisions[t.db];
+      if (d === 'archive') newlyArchived.push({ ...t, archived: true });
+      else if (d === 'delete') continue;
+      else if (d && typeof d === 'object' && d.moveTo) remap[t.db] = d.moveTo;
+      else throw new Error('No decision for removed task type: ' + t.db);
+    }
+    return { tasks: [...draft.map((t) => ({ ...t })), ...archivedBefore, ...newlyArchived], remap };
+  }
+
+  function remapTaskInCsv(text, from, to) {
+    return text.split(/(\r?\n)/).map((part, i) => {
+      if (i % 2 === 1) return part;
+      const f = part.split(',');
+      if (part !== CSV_HEADER && f.length === 6 && f[5] === from) { f[5] = to; return f.join(','); }
+      return part;
+    }).join('');
+  }
 
   const pad = (n) => String(n).padStart(2, '0');
 
@@ -55,7 +89,7 @@
   }
 
   function startTimer(s, task, nowMs) {
-    if (!TASKS.includes(task)) throw new Error('Unknown task: ' + task);
+    if (!ACTIVE_TASK_DEFS.some((t) => t.db === task)) throw new Error('Unknown task: ' + task);
     if (s.status !== 'idle') throw new Error('Timer is not idle');
     return { ...s, status: 'running', task, startedAt: nowMs, accumulatedMs: 0, resumedAt: nowMs };
   }
@@ -227,11 +261,15 @@
 
   const canGoForward = (toKey, todayKey) => toKey < todayKey;
 
-  return {
-    TASK_DEFS, TASKS, TASK_COLORS, taskLabel, formatHM, formatDuration, formatStamp, dateKey, addDays, isWeekday,
+  const api = {
+    setTasks, applyTaskEdits, remapTaskInCsv, taskLabel, formatHM, formatDuration, formatStamp, dateKey, addDays, isWeekday,
     createTimer, startTimer, pauseTimer, resumeTimer, activeMs, stopTimer,
     colorBand, ringFraction, setPlanned, adjustPlanned,
     CSV_HEADER, sessionToCsvRow, parseCsv, validateSession,
     sessionDay, filterByRange, summarize, dailyByTask, weekRange, shiftRange, canGoForward,
   };
+  // live views of the current task list (they change when setTasks is called)
+  const live = { TASK_DEFS: () => TASK_DEFS, ACTIVE_TASK_DEFS: () => ACTIVE_TASK_DEFS, TASKS: () => TASKS, TASK_COLORS: () => TASK_COLORS };
+  for (const [name, get] of Object.entries(live)) Object.defineProperty(api, name, { get, enumerable: true });
+  return api;
 });

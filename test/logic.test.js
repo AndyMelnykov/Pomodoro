@@ -1,4 +1,5 @@
 const test = require('node:test');
+const { afterEach } = test;
 const assert = require('node:assert/strict');
 const L = require('../logic.js');
 
@@ -165,4 +166,58 @@ test('shiftRange and canGoForward', () => {
   assert.equal(L.canGoForward('2026-11-15', '2026-11-11'), false);
   assert.equal(L.canGoForward('2026-11-11', '2026-11-11'), false);
   assert.equal(L.canGoForward('2026-11-08', '2026-11-11'), true);
+});
+
+// ---- runtime task list ----
+const DEFAULTS = JSON.parse(JSON.stringify(L.TASK_DEFS));
+afterEach(() => L.setTasks(DEFAULTS));
+const D = (db, extra = {}) => ({ ui: db.toUpperCase(), db, color: '#112233', ...extra });
+
+test('setTasks swaps live getters', () => {
+  L.setTasks([{ ui: 'X', db: 'x', color: '#000000' }]);
+  assert.deepEqual(L.TASKS, ['x']);
+  assert.equal(L.TASK_COLORS.x, '#000000');
+  assert.equal(L.taskLabel('x'), 'X');
+});
+test('setTasks rejects invalid list', () => {
+  assert.throws(() => L.setTasks([]));
+  assert.throws(() => L.setTasks([D('a'), D('a')]));
+});
+test('ACTIVE_TASK_DEFS excludes archived', () => {
+  L.setTasks([D('a'), D('b', { archived: true })]);
+  assert.deepEqual(L.ACTIVE_TASK_DEFS.map((t) => t.db), ['a']);
+  assert.deepEqual(L.TASK_DEFS.map((t) => t.db), ['a', 'b']);
+  assert.deepEqual(L.TASKS, ['a', 'b']);
+});
+test('archived type is not startable but still valid in sessions', () => {
+  L.setTasks([D('a'), D('b', { archived: true })]);
+  assert.throws(() => L.startTimer(L.createTimer(45), 'b', 0), /Unknown task/);
+  assert.doesNotThrow(() => L.startTimer(L.createTimer(45), 'a', 0));
+  const sess = { start: '2026-11-11 14:00', finish: '2026-11-11 15:00', plannedMin: 60, activeMin: 60, completionPct: 100, task: 'b' };
+  assert.equal(L.validateSession(sess), null);
+  assert.equal(L.summarize([sess]).byTask.b, 60);
+});
+test('applyTaskEdits: archive, delete, move, reorder, add', () => {
+  const original = [D('a'), D('b'), D('c'), D('d'), D('old', { archived: true })];
+  const draft = [D('d'), D('a', { color: '#abcdef' }), D('new')];
+  const r = L.applyTaskEdits(original, draft, { b: 'archive', c: { moveTo: 'a' } });
+  assert.deepEqual(r.tasks.map((t) => t.db), ['d', 'a', 'new', 'old', 'b']);
+  assert.deepEqual(r.tasks.filter((t) => t.archived).map((t) => t.db), ['old', 'b']);
+  assert.equal(r.tasks.find((t) => t.db === 'b').ui, 'B');
+  assert.equal(r.tasks.find((t) => t.db === 'a').color, '#abcdef');
+  assert.deepEqual(r.remap, { c: 'a' });
+  const r2 = L.applyTaskEdits([D('a'), D('b')], [D('a')], { b: 'delete' });
+  assert.deepEqual(r2.tasks.map((t) => t.db), ['a']);
+  assert.deepEqual(r2.remap, {});
+});
+test('applyTaskEdits throws without a decision for a removed type', () => {
+  assert.throws(() => L.applyTaskEdits([D('a'), D('b')], [D('a')], {}));
+});
+test('remapTaskInCsv rewrites only matching rows and preserves CRLF', () => {
+  const row = (t) => 'S,F,60,60,100,' + t;
+  const text = [L.CSV_HEADER, row('a'), row('ab'), row('b')].join('\r\n') + '\r\n';
+  assert.equal(L.remapTaskInCsv(text, 'a', 'b'),
+    [L.CSV_HEADER, row('b'), row('ab'), row('b')].join('\r\n') + '\r\n');
+  assert.equal(L.remapTaskInCsv(row('a'), 'a', 'b'), row('b'));
+  assert.equal(L.remapTaskInCsv(L.CSV_HEADER + '\n', 'task', 'x'), L.CSV_HEADER + '\n');
 });
