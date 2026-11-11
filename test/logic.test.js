@@ -30,45 +30,55 @@ test('isWeekday', () => {
   assert.equal(L.isWeekday('2026-11-14'), false); // Sat
   assert.equal(L.isWeekday('2026-11-15'), false); // Sun
 });
-test('TASKS exact', () => {
-  assert.deepEqual(L.TASKS, ['Job search', 'Network', 'AI projects', 'Interview prep (theory)']);
+// Task names are never hard-coded in tests: edit tasks.js freely (fixtures use the first four entries).
+const [JOB, NET, AI, PREP] = L.TASKS;
+test('fixtures need at least 4 tasks in tasks.js', () => {
+  assert.ok(L.TASKS.length >= 4);
+});
+test('TASKS and TASK_COLORS derive from TASK_DEFS', () => {
+  assert.deepEqual(L.TASKS, L.TASK_DEFS.map((t) => t.db));
+  for (const def of L.TASK_DEFS) assert.equal(L.TASK_COLORS[def.db], def.color);
+});
+test('taskLabel maps db to ui, falls back to db', () => {
+  for (const def of L.TASK_DEFS) assert.equal(L.taskLabel(def.db), def.ui);
+  assert.equal(L.taskLabel('Retired task'), 'Retired task');
 });
 
 // ---- Task 2: timer engine and CSV format ----
 const T0 = new Date(2026, 10, 11, 14, 0).getTime(), MIN = 60000;
 
 test('pause excludes paused time; session fields', () => {
-  let s = L.startTimer(L.createTimer(45), 'Network', T0);
+  let s = L.startTimer(L.createTimer(45), NET, T0);
   assert.equal(L.activeMs(s, T0 + 10*MIN), 10*MIN);
   s = L.pauseTimer(s, T0 + 10*MIN);
   assert.equal(L.activeMs(s, T0 + 20*MIN), 10*MIN);
   s = L.resumeTimer(s, T0 + 20*MIN);
   const r = L.stopTimer(s, T0 + 50*MIN);
   assert.deepEqual(r.session, { start: '2026-11-11 14:00', finish: '2026-11-11 14:50',
-    plannedMin: 45, activeMin: 40, completionPct: 89, task: 'Network' });
+    plannedMin: 45, activeMin: 40, completionPct: 89, task: NET });
   assert.equal(r.state.status, 'idle'); assert.equal(r.state.task, null); assert.equal(r.state.plannedMin, 45);
 });
 test('overtime is uncapped', () => {
-  const s = L.startTimer(L.createTimer(60), 'AI projects', T0);
+  const s = L.startTimer(L.createTimer(60), AI, T0);
   const r = L.stopTimer(s, T0 + 70*MIN);
   assert.equal(r.session.activeMin, 70); assert.equal(r.session.completionPct, 117);
 });
 test('stop while paused uses stop time as finish', () => {
-  let s = L.startTimer(L.createTimer(45), 'Job search', T0);
+  let s = L.startTimer(L.createTimer(45), JOB, T0);
   s = L.pauseTimer(s, T0 + 30*MIN);
   const r = L.stopTimer(s, T0 + 40*MIN);
   assert.equal(r.session.activeMin, 30); assert.equal(r.session.finish, '2026-11-11 14:40');
 });
 test('sessions under 5 rounded minutes are dropped', () => {
-  const s = L.startTimer(L.createTimer(45), 'Job search', T0);
+  const s = L.startTimer(L.createTimer(45), JOB, T0);
   assert.equal(L.stopTimer(s, T0 + 4*MIN + 29000).session, null);
   assert.equal(L.stopTimer(s, T0 + 4*MIN + 30000).session.activeMin, 5);
 });
 test('start requires a valid task and idle state', () => {
   assert.throws(() => L.startTimer(L.createTimer(), null, T0));
   assert.throws(() => L.startTimer(L.createTimer(), 'Gaming', T0));
-  const s = L.startTimer(L.createTimer(), 'Network', T0);
-  assert.throws(() => L.startTimer(s, 'Network', T0));
+  const s = L.startTimer(L.createTimer(), NET, T0);
+  assert.throws(() => L.startTimer(s, NET, T0));
 });
 test('colorBand boundaries', () => {
   assert.equal(L.colorBand(45*MIN - 1, 60), 'red');
@@ -92,9 +102,9 @@ test('setPlanned / adjustPlanned', () => {
   assert.equal(L.adjustPlanned(45, 'h', 1), 105);
   assert.equal(L.adjustPlanned(1439, 'm', 1), 1439);
 });
-const ROW = '2026-11-11 14:00,2026-11-11 15:10,60,70,117,Interview prep (theory)';
+const ROW = `2026-11-11 14:00,2026-11-11 15:10,60,70,117,${PREP}`;
 const SESSION = { start: '2026-11-11 14:00', finish: '2026-11-11 15:10', plannedMin: 60,
-  activeMin: 70, completionPct: 117, task: 'Interview prep (theory)' };
+  activeMin: 70, completionPct: 117, task: PREP };
 test('CSV row round trip', () => {
   assert.equal(L.CSV_HEADER, 'start,finish,planned_min,active_min,completion_pct,task');
   assert.equal(L.sessionToCsvRow(SESSION), ROW);
@@ -102,8 +112,8 @@ test('CSV row round trip', () => {
   assert.deepEqual(L.parseCsv(''), { sessions: [], skipped: 0 });
 });
 test('parseCsv skips malformed rows', () => {
-  const text = [L.CSV_HEADER, ROW, 'garbage', '11/11/2026 14:00,11/11/2026 15:00,60,60,100,Network',
-    '2026-11-11 14:00,2026-11-11 15:00,60,x,100,Network', '2026-11-11 14:00,2026-11-11 15:00,60,60,100,Gaming'].join('\n');
+  const text = [L.CSV_HEADER, ROW, 'garbage', '11/11/2026 14:00,11/11/2026 15:00,60,60,100,' + NET,
+    '2026-11-11 14:00,2026-11-11 15:00,60,x,100,' + NET, '2026-11-11 14:00,2026-11-11 15:00,60,60,100,Gaming'].join('\n');
   const r = L.parseCsv(text);
   assert.equal(r.sessions.length, 1); assert.equal(r.skipped, 4);
 });
@@ -120,28 +130,29 @@ test('parseCsv tolerates a UTF-8 BOM from Excel', () => {
 // ---- Task 3: dashboard calculations ----
 const S = (start, task, activeMin, plannedMin) => ({ start, finish: start, task, activeMin, plannedMin,
   completionPct: Math.round(activeMin/plannedMin*100) });
+const byTask = (minutes) => ({ ...Object.fromEntries(L.TASKS.map((t) => [t, 0])), ...minutes });
 const WEEK = [
-  S('2026-11-09 09:00', 'Job search', 60, 45),   // Mon
-  S('2026-11-09 11:00', 'Network', 30, 45),      // Mon
-  S('2026-11-11 10:00', 'Network', 45, 45),      // Wed
-  S('2026-11-14 10:00', 'AI projects', 45, 60),  // Sat
+  S('2026-11-09 09:00', JOB, 60, 45),   // Mon
+  S('2026-11-09 11:00', NET, 30, 45),      // Mon
+  S('2026-11-11 10:00', NET, 45, 45),      // Wed
+  S('2026-11-14 10:00', AI, 45, 60),  // Sat
 ];
 test('summarize', () => {
   assert.deepEqual(L.summarize(WEEK), { totalMin: 180, completionPct: 92, avgPerDayMin: 60,
-    avgPerWeekdayMin: 68, byTask: { 'Job search': 60, 'Network': 75, 'AI projects': 45, 'Interview prep (theory)': 0 } });
+    avgPerWeekdayMin: 68, byTask: byTask({ [JOB]: 60, [NET]: 75, [AI]: 45 }) });
   assert.deepEqual(L.summarize([]), { totalMin: 0, completionPct: null, avgPerDayMin: null,
-    avgPerWeekdayMin: null, byTask: { 'Job search': 0, 'Network': 0, 'AI projects': 0, 'Interview prep (theory)': 0 } });
+    avgPerWeekdayMin: null, byTask: byTask({}) });
 });
 test('dailyByTask zero-fills every day', () => {
   const r = L.dailyByTask(WEEK, '2026-11-09', '2026-11-15');
   assert.equal(r.days.length, 7);
-  assert.deepEqual(r.series['Network'], [30, 0, 45, 0, 0, 0, 0]);
-  assert.deepEqual(r.series['AI projects'], [0, 0, 0, 0, 0, 45, 0]);
+  assert.deepEqual(r.series[NET], [30, 0, 45, 0, 0, 0, 0]);
+  assert.deepEqual(r.series[AI], [0, 0, 0, 0, 0, 45, 0]);
 });
 test('session crossing midnight counts on start day', () => {
-  const s = { ...S('2026-11-11 23:30', 'Network', 60, 45), finish: '2026-11-12 00:30' };
+  const s = { ...S('2026-11-11 23:30', NET, 60, 45), finish: '2026-11-12 00:30' };
   assert.equal(L.filterByRange([s], '2026-11-12', '2026-11-12').length, 0);
-  assert.deepEqual(L.dailyByTask([s], '2026-11-11', '2026-11-12').series['Network'], [60, 0]);
+  assert.deepEqual(L.dailyByTask([s], '2026-11-11', '2026-11-12').series[NET], [60, 0]);
 });
 test('weekRange Mon-Sun', () => {
   const want = { from: '2026-11-09', to: '2026-11-15' };

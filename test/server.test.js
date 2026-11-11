@@ -6,9 +6,10 @@ const path = require('node:path');
 const L = require('../logic.js');
 const { createServer } = require('../server.js');
 
-const ROW = '2026-11-11 14:00,2026-11-11 15:10,60,70,117,Interview prep (theory)';
+const TASK = L.TASKS[0];
+const ROW = `2026-11-11 14:00,2026-11-11 15:10,60,70,117,${TASK}`;
 const SESSION = { start: '2026-11-11 14:00', finish: '2026-11-11 15:10', plannedMin: 60,
-  activeMin: 70, completionPct: 117, task: 'Interview prep (theory)' };
+  activeMin: 70, completionPct: 117, task: TASK };
 
 let dir, csvPath, server, base;
 
@@ -58,6 +59,7 @@ test('write failure returns 500', async () => {
 });
 test('static whitelist', async () => {
   assert.equal((await fetch(base + '/logic.js')).status, 200);
+  assert.equal((await fetch(base + '/tasks.js')).status, 200);
   assert.equal((await fetch(base + '/server.js')).status, 404);
   assert.equal((await fetch(base + '/sessions.csv')).status, 404);
 });

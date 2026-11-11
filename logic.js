@@ -1,14 +1,12 @@
 (function (root, factory) {
-  if (typeof module === 'object' && module.exports) module.exports = factory();
-  else root.Logic = factory();
-})(this, function () {
-  const TASKS = ['Job search', 'Network', 'AI projects', 'Interview prep (theory)'];
-  const TASK_COLORS = {
-    'Job search': '#4e79a7',
-    'Network': '#f28e2b',
-    'AI projects': '#59a14f',
-    'Interview prep (theory)': '#b07aa1',
-  };
+  if (typeof module === 'object' && module.exports) module.exports = factory(require('./tasks.js'));
+  else root.Logic = factory(root.Tasks);
+})(this, function (Tasks) {
+  // The task list lives in tasks.js. Everything here is keyed by the DB name.
+  const TASK_DEFS = Tasks.TASK_DEFS;
+  const TASKS = TASK_DEFS.map((t) => t.db);
+  const TASK_COLORS = Object.fromEntries(TASK_DEFS.map((t) => [t.db, t.color]));
+  const taskLabel = (db) => (TASK_DEFS.find((t) => t.db === db) || { ui: db }).ui;
 
   const pad = (n) => String(n).padStart(2, '0');
 
@@ -230,7 +228,7 @@
   const canGoForward = (toKey, todayKey) => toKey < todayKey;
 
   return {
-    TASKS, TASK_COLORS, formatHM, formatDuration, formatStamp, dateKey, addDays, isWeekday,
+    TASK_DEFS, TASKS, TASK_COLORS, taskLabel, formatHM, formatDuration, formatStamp, dateKey, addDays, isWeekday,
     createTimer, startTimer, pauseTimer, resumeTimer, activeMs, stopTimer,
     colorBand, ringFraction, setPlanned, adjustPlanned,
     CSV_HEADER, sessionToCsvRow, parseCsv, validateSession,

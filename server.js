@@ -12,6 +12,7 @@ const STATIC = {
   '/': ['index.html', 'text/html; charset=utf-8'],
   '/index.html': ['index.html', 'text/html; charset=utf-8'],
   '/logic.js': ['logic.js', 'application/javascript; charset=utf-8'],
+  '/tasks.js': ['tasks.js', 'application/javascript; charset=utf-8'],
   '/chart.umd.js': ['chart.umd.js', 'application/javascript; charset=utf-8'],
 };
 

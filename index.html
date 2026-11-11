@@ -159,6 +159,7 @@
   </section>
 </main>
 
+<script src="tasks.js"></script>
 <script src="logic.js"></script>
 <script src="chart.umd.js"></script>
 <script>
@@ -188,11 +189,11 @@
   $('tab-dashboard').addEventListener('click', () => showTab('dashboard'));
 
   // ---- task toggles ----
-  const taskButtons = L.TASKS.map((task) => {
+  const taskButtons = L.TASK_DEFS.map(({ ui, db: task }) => {
     const b = document.createElement('button');
     b.type = 'button';
     b.className = 'task';
-    b.textContent = task;
+    b.textContent = ui;
     b.setAttribute('aria-pressed', 'false');
     b.addEventListener('click', () => {
       if (state.status !== 'idle') return;
