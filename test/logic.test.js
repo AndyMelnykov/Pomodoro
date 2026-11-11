@@ -221,3 +221,29 @@ test('remapTaskInCsv rewrites only matching rows and preserves CRLF', () => {
   assert.equal(L.remapTaskInCsv(row('a'), 'a', 'b'), row('b'));
   assert.equal(L.remapTaskInCsv(L.CSV_HEADER + '\n', 'task', 'x'), L.CSV_HEADER + '\n');
 });
+
+const DEFS4 = [
+  { ui: 'A', db: 'a', color: '#000001' },
+  { ui: 'B', db: 'b', color: '#000002' },
+  { ui: 'Old1', db: 'o1', color: '#000003', archived: true },
+  { ui: 'Old2', db: 'o2', color: '#000004', archived: true },
+];
+test('shownTypes: active types always, in button order', () => {
+  L.setTasks(DEFS4);
+  assert.deepEqual(L.shownTypes({ a: 0, b: 0, o1: 0, o2: 0 }), ['a', 'b']);
+  assert.deepEqual(L.shownTypes({}), ['a', 'b']);
+});
+test('shownTypes: archived types only when they have minutes', () => {
+  L.setTasks(DEFS4);
+  assert.deepEqual(L.shownTypes({ a: 0, b: 5, o1: 0, o2: 30 }), ['a', 'b', 'o2']);
+  assert.deepEqual(L.shownTypes({ o1: 1, o2: 1 }), ['a', 'b', 'o1', 'o2']);
+});
+test('shownTypes: accepts per-day arrays (dailyByTask series)', () => {
+  L.setTasks(DEFS4);
+  assert.deepEqual(L.shownTypes({ a: [0, 0], b: [0, 0], o1: [0, 15], o2: [0, 0] }), ['a', 'b', 'o1']);
+});
+test('dayLabel: ddd D MMM', () => {
+  assert.equal(L.dayLabel('2026-11-09'), 'Mon 9 Nov');
+  assert.equal(L.dayLabel('2026-11-15'), 'Sun 15 Nov');
+  assert.equal(L.dayLabel('2027-01-01'), 'Fri 1 Jan');
+});

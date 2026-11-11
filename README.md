@@ -11,7 +11,7 @@ No framework, no build step, no dependencies to install — just Node.js and a b
 - **Session log** appended to `sessions.csv` (start, finish, planned minutes, active minutes, completion %, task)
 - **Local-only server** bound to `127.0.0.1`, serving a fixed set of files and a tiny `/api/tasks` endpoint
 - Renaming a task type can also rename it in past sessions
-- Dashboard calculations in `logic.js` (the Dashboard tab UI is still a placeholder)
+- **Dashboard tab**: week-by-week stats (today, average per day and per weekday, % completed), a stacked daily chart by task type, and today/period pies
 
 ## Requirements
 

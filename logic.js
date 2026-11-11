@@ -261,12 +261,30 @@
 
   const canGoForward = (toKey, todayKey) => toKey < todayKey;
 
+  // Types a chart should draw: every active type in button order, then archived types that have
+  // minutes in this data. Values may be numbers (summarize byTask) or per-day arrays (dailyByTask series).
+  function shownTypes(minutesByDb) {
+    const total = (v) => (Array.isArray(v) ? v.reduce((a, b) => a + b, 0) : v || 0);
+    return [
+      ...ACTIVE_TASK_DEFS.map((t) => t.db),
+      ...TASK_DEFS.filter((t) => t.archived && total(minutesByDb[t.db]) > 0).map((t) => t.db),
+    ];
+  }
+
+  const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  function dayLabel(key) {
+    const d = new Date(keyToUtc(key));
+    return DAY_NAMES[d.getUTCDay()] + ' ' + d.getUTCDate() + ' ' + MONTH_NAMES[d.getUTCMonth()];
+  }
+
   const api = {
     setTasks, applyTaskEdits, remapTaskInCsv, taskLabel, formatHM, formatDuration, formatStamp, dateKey, addDays, isWeekday,
     createTimer, startTimer, pauseTimer, resumeTimer, activeMs, stopTimer,
     colorBand, ringFraction, setPlanned, adjustPlanned,
     CSV_HEADER, sessionToCsvRow, parseCsv, validateSession,
     sessionDay, filterByRange, summarize, dailyByTask, weekRange, shiftRange, canGoForward,
+    shownTypes, dayLabel,
   };
   // live views of the current task list (they change when setTasks is called)
   const live = { TASK_DEFS: () => TASK_DEFS, ACTIVE_TASK_DEFS: () => ACTIVE_TASK_DEFS, TASKS: () => TASKS, TASK_COLORS: () => TASK_COLORS };
