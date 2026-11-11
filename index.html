@@ -102,7 +102,32 @@
   .error-actions button:hover { background: #fbe0dd; }
   .copied { font-size: 13px; }
 
-  .placeholder { color: var(--muted); text-align: center; padding: 48px 0; }
+  /* ---- dashboard tab ---- */
+  #dashboard { display: flex; flex-direction: column; gap: 16px; }
+  .filter { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px; }
+  .filter label { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 14px; }
+  .filter input { font: inherit; font-size: 14px; padding: 5px 8px; border: 1px solid #cfcfcf; border-radius: 6px; background: var(--card); color: var(--text); }
+  .nav {
+    width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--line); background: var(--card);
+    color: var(--text); font: inherit; font-size: 20px; line-height: 1; cursor: pointer; display: grid; place-items: center;
+  }
+  .nav:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); }
+  .nav:disabled { opacity: .4; cursor: not-allowed; }
+  .warn { margin: 0; padding: 8px 12px; border-radius: 6px; background: #fff4e5; color: #7a4100; font-size: 14px; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+  .card, .panel { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+  .card-label { display: block; color: var(--muted); font-size: 13px; }
+  .card-value { display: block; font-size: 24px; font-variant-numeric: tabular-nums; margin-top: 4px; }
+  .panel h3 { margin: 0 0 8px; font-size: 14px; font-weight: 600; display: flex; justify-content: space-between; gap: 8px; }
+  .panel h3 span { color: var(--muted); font-weight: 400; }
+  .chart-box { position: relative; }
+  .chart-box.bar { height: 300px; }
+  .chart-box.pie { height: 260px; }
+  .empty { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; color: var(--muted); }
+  /* minmax(0, …) and min-width: 0 let the canvases shrink when the window narrows */
+  .pies { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .panel { min-width: 0; }
+  @media (max-width: 640px) { .pies { grid-template-columns: minmax(0, 1fr); } }
 
   /* ---- task editor ---- */
   .task-row { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px; }
@@ -197,7 +222,37 @@
   </section>
 
   <section id="dashboard" role="tabpanel" aria-labelledby="tab-dashboard" hidden>
-    <p class="placeholder">The dashboard is coming next.</p>
+    <div class="filter">
+      <button type="button" class="nav" id="d-prev" aria-label="Previous week" title="Previous week">&lsaquo;</button>
+      <label>From <input type="date" id="d-from" min="2000-01-01" max="2099-12-31"></label>
+      <label>To <input type="date" id="d-to" min="2000-01-01" max="2099-12-31"></label>
+      <button type="button" class="nav" id="d-next" aria-label="Next week" title="Next week">&rsaquo;</button>
+    </div>
+    <p class="dlg-error" id="d-error" role="alert" hidden></p>
+    <p class="warn" id="d-warn" role="status" hidden></p>
+    <div id="d-body" hidden>
+      <div class="cards">
+        <div class="card"><span class="card-label">Productive time today</span><span class="card-value" id="s-today">&mdash;</span></div>
+        <div class="card"><span class="card-label">Avg per day</span><span class="card-value" id="s-avg-day">&mdash;</span></div>
+        <div class="card"><span class="card-label">Avg per weekday</span><span class="card-value" id="s-avg-weekday">&mdash;</span></div>
+        <div class="card"><span class="card-label">% completed today</span><span class="card-value" id="s-pct-today">&mdash;</span></div>
+        <div class="card"><span class="card-label">% completed (period)</span><span class="card-value" id="s-pct-period">&mdash;</span></div>
+      </div>
+      <div class="panel" style="margin-top: 16px">
+        <h3>Time per day</h3>
+        <div class="chart-box bar"><canvas id="c-bar" role="img" aria-label="Stacked column chart of time per day by task type"></canvas></div>
+      </div>
+      <div class="pies" style="margin-top: 16px">
+        <div class="panel">
+          <h3>Today <span id="t-today"></span></h3>
+          <div class="chart-box pie"><canvas id="c-today" role="img" aria-label="Pie chart of today by task type"></canvas><p class="empty" id="e-today" hidden>No sessions</p></div>
+        </div>
+        <div class="panel">
+          <h3>Selected period <span id="t-period"></span></h3>
+          <div class="chart-box pie"><canvas id="c-period" role="img" aria-label="Pie chart of the selected period by task type"></canvas><p class="empty" id="e-period" hidden>No sessions</p></div>
+        </div>
+      </div>
+    </div>
   </section>
 </main>
 
@@ -258,7 +313,132 @@
     }
   }
   $('tab-timer').addEventListener('click', () => showTab('timer'));
-  $('tab-dashboard').addEventListener('click', () => showTab('dashboard'));
+  $('tab-dashboard').addEventListener('click', () => { showTab('dashboard'); openDashboard(); });
+
+  // ---- dashboard ----
+  // The task list (labels, colors, archived types) is read from L at every render, never cached:
+  // the editor can change it, and an editor save can rewrite sessions.csv, so the CSV is refetched on every open.
+  let dRange = L.weekRange(new Date());
+  let dData = null; // { sessions, skipped } from the last fetch, or null if it failed
+  const charts = {};
+  const orDash = (v, fmt) => (v === null ? '—' : fmt(v));
+  const sumOf = (arr) => arr.reduce((a, b) => a + b, 0);
+
+  async function openDashboard() {
+    $('d-error').hidden = true;
+    try {
+      const res = await fetch('/api/sessions');
+      if (!res.ok) throw new Error('the server answered with status ' + res.status);
+      dData = L.parseCsv(await res.text());
+    } catch (e) {
+      dData = null;
+      $('d-error').textContent = 'Could not read sessions.csv: ' + e.message;
+      $('d-error').hidden = false;
+    }
+    renderDashboard();
+  }
+
+  function renderDashboard() {
+    const today = L.dateKey(new Date());
+    $('d-from').value = dRange.from;
+    $('d-to').value = dRange.to;
+    $('d-next').disabled = !L.canGoForward(dRange.to, today);
+    $('d-body').hidden = !dData;
+    $('d-warn').hidden = !dData || dData.skipped === 0;
+    if (!dData) return;
+    const n = dData.skipped;
+    $('d-warn').textContent = n + (n === 1 ? ' row' : ' rows') + " in sessions.csv couldn't be read and " +
+      (n === 1 ? 'was' : 'were') + ' skipped (bad format, or a task type that is no longer in the list).';
+
+    const day = L.summarize(L.filterByRange(dData.sessions, today, today));
+    const inRange = L.filterByRange(dData.sessions, dRange.from, dRange.to);
+    const period = L.summarize(inRange);
+    $('s-today').textContent = L.formatDuration(day.totalMin);
+    $('s-avg-day').textContent = orDash(period.avgPerDayMin, L.formatDuration);
+    $('s-avg-weekday').textContent = orDash(period.avgPerWeekdayMin, L.formatDuration);
+    $('s-pct-today').textContent = orDash(day.completionPct, (v) => v + '%');
+    $('s-pct-period').textContent = orDash(period.completionPct, (v) => v + '%');
+
+    drawBar(L.dailyByTask(inRange, dRange.from, dRange.to));
+    drawPie('today', day);
+    drawPie('period', period);
+  }
+
+  function drawBar({ days, series }) {
+    const data = {
+      labels: days.map(L.dayLabel),
+      datasets: L.shownTypes(series).map((db) => ({
+        label: L.taskLabel(db), data: series[db], backgroundColor: L.TASK_COLORS[db],
+      })),
+    };
+    if (charts.bar) { charts.bar.data = data; charts.bar.update(); return; }
+    charts.bar = new Chart($('c-bar'), {
+      type: 'bar',
+      data,
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        scales: {
+          x: { stacked: true, grid: { display: false } },
+          y: { stacked: true, beginAtZero: true, ticks: { precision: 0, callback: (v) => L.formatDuration(v) } },
+        },
+        plugins: {
+          legend: { position: 'bottom' },
+          tooltip: { callbacks: {
+            title: () => '',
+            label: (c) => c.dataset.label + ' · ' + c.label + ' · ' + L.formatDuration(c.raw),
+          } },
+        },
+      },
+    });
+  }
+
+  function drawPie(key, summary) {
+    const dbs = L.shownTypes(summary.byTask).filter((db) => summary.byTask[db] > 0);
+    const total = summary.totalMin;
+    $('t-' + key).textContent = total > 0 ? L.formatDuration(total) : '';
+    $('c-' + key).hidden = total === 0;
+    $('e-' + key).hidden = total > 0;
+    const data = {
+      labels: dbs.map(L.taskLabel),
+      datasets: [{
+        data: dbs.map((db) => summary.byTask[db]),
+        backgroundColor: dbs.map((db) => L.TASK_COLORS[db]),
+        borderWidth: dbs.length > 1 ? 2 : 0, // a single full slice would otherwise show a white seam
+      }],
+    };
+    if (charts[key]) { charts[key].data = data; charts[key].update(); return; }
+    charts[key] = new Chart($('c-' + key), {
+      type: 'pie',
+      data,
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'bottom' },
+          tooltip: { callbacks: {
+            // the total is read from the chart's current data, so it stays right after updates
+            label: (c) => c.label + ': ' + L.formatDuration(c.raw) + ' (' + Math.round(c.raw / sumOf(c.dataset.data) * 100) + '%)',
+          } },
+        },
+      },
+    });
+  }
+
+  $('d-prev').addEventListener('click', () => { dRange = L.shiftRange(dRange, -7); renderDashboard(); });
+  $('d-next').addEventListener('click', () => {
+    if (!L.canGoForward(dRange.to, L.dateKey(new Date()))) return;
+    dRange = L.shiftRange(dRange, 7);
+    renderDashboard();
+  });
+  function onDateChange() {
+    const f = $('d-from'), t = $('d-to');
+    // an empty or out-of-range date (e.g. a mistyped year) puts the previous range back
+    if (f.value && t.value && f.validity.valid && t.validity.valid) {
+      dRange = f.value <= t.value ? { from: f.value, to: t.value } : { from: t.value, to: f.value };
+    }
+    renderDashboard();
+  }
+  $('d-from').addEventListener('change', onDateChange);
+  $('d-to').addEventListener('change', onDateChange);
 
   // ---- task toggles ----
   let taskButtons = [];
