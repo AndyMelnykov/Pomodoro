@@ -128,6 +128,7 @@
   }
   .nav:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); }
   .nav:disabled { opacity: .4; cursor: not-allowed; }
+  #backup-warn { margin-bottom: 8px; }
   .warn { margin: 0; padding: 8px 12px; border-radius: 6px; background: #fff4e5; color: #7a4100; font-size: 14px; }
   .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
   .card, .panel { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
@@ -186,6 +187,7 @@
 </head>
 <body>
 <main>
+  <p class="warn" id="backup-warn" role="alert" hidden></p>
   <nav class="tabs" role="tablist" aria-label="Views">
     <button class="tab" role="tab" id="tab-timer" aria-controls="timer" aria-selected="true">Timer</button>
     <button class="tab" role="tab" id="tab-dashboard" aria-controls="dashboard" aria-selected="false">Dashboard</button>
@@ -816,8 +818,18 @@
   }
   $('te-save').addEventListener('click', saveEditor);
 
+  // The server checks its backups on start; show what it found so a problem is not missed.
+  async function loadStatus() {
+    try {
+      const res = await fetch('/api/status');
+      const warning = res.ok ? (await res.json()).backupWarning : null;
+      if (warning) { $('backup-warn').textContent = 'Backup warning: ' + warning; $('backup-warn').hidden = false; }
+    } catch (_) { /* nothing to show */ }
+  }
+
   render(true);
   loadTasks();
+  loadStatus();
   setInterval(render, 1000);
 })();
 </script>

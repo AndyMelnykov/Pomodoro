@@ -178,3 +178,19 @@ test('corrupt tasks.json at startup: defaults used, file untouched', async () =>
     assert.equal(fs.readFileSync(t.tasksPath, 'utf8'), '{ not json');
   } finally { await t.close(); }
 });
+
+test('GET /api/status reports no backup warning by default', async () => {
+  const res = await fetch(base + '/api/status');
+  assert.equal(res.status, 200);
+  assert.deepEqual(await res.json(), { backupWarning: null });
+});
+test('GET /api/status passes on the backup warning', async () => {
+  const s = createServer({ root: path.join(__dirname, '..'), csvPath, backupWarning: 'look out' });
+  await new Promise((resolve) => s.listen(0, '127.0.0.1', resolve));
+  try {
+    const res = await fetch('http://127.0.0.1:' + s.address().port + '/api/status');
+    assert.deepEqual(await res.json(), { backupWarning: 'look out' });
+  } finally {
+    await new Promise((resolve) => s.close(resolve));
+  }
+});
