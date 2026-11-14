@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const L = require('./logic.js');
 const Tasks = require('./tasks.js');
+const { backupData } = require('./backup.js');
 
 const HOST = '127.0.0.1';
 const PORT = 8765;
@@ -87,7 +88,7 @@ function checkTaskSave(body, csvText) {
   return null;
 }
 
-function createServer({ root, csvPath, tasksPath }) {
+function createServer({ root, csvPath, tasksPath, backupWarning = null }) {
   if (tasksPath) loadTasks(tasksPath); else L.setTasks(Tasks.DEFAULT_TASK_DEFS);
   return http.createServer(async (req, res) => {
     const url = new URL(req.url, 'http://localhost');
@@ -117,6 +118,11 @@ function createServer({ root, csvPath, tasksPath }) {
           }
           return sendJson(res, 201, { ok: true });
         }
+        return sendJson(res, 405, { error: 'Method not allowed' });
+      }
+
+      if (url.pathname === '/api/status') {
+        if (req.method === 'GET') return sendJson(res, 200, { backupWarning });
         return sendJson(res, 405, { error: 'Method not allowed' });
       }
 
@@ -166,7 +172,19 @@ function createServer({ root, csvPath, tasksPath }) {
 }
 
 if (require.main === module) {
-  const server = createServer({ root: __dirname, csvPath: path.join(__dirname, 'sessions.csv'), tasksPath: path.join(__dirname, 'tasks.json') });
+  const csvPath = path.join(__dirname, 'sessions.csv');
+  const tasksPath = path.join(__dirname, 'tasks.json');
+  let backupWarning = null;
+  try {
+    const r = backupData({ backupDir: path.join(__dirname, 'backups'), csvPath, tasksPath });
+    backupWarning = r.warning;
+    if (r.created.length) console.log('Backed up to backups/' + r.created.join(', backups/'));
+    if (r.deleted.length) console.log('Removed old backups: ' + r.deleted.join(', '));
+  } catch (e) {
+    backupWarning = 'Backup failed: ' + e.message;
+  }
+  if (backupWarning) console.log('WARNING: ' + backupWarning);
+  const server = createServer({ root: __dirname, csvPath, tasksPath, backupWarning });
   server.on('error', (e) => {
     if (e.code === 'EADDRINUSE') {
       console.log(`Already running at http://${HOST}:${PORT}/`);
